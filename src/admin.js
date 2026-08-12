@@ -17,15 +17,20 @@ class AdminController {
     this.scanlinesEnabled = true;
     this.staticFXEnabled = true;
     this.washoutEnabled = true;
+    this.osdMode = localStorage.getItem('bnsd_osd_mode') || 'crt-header';
   }
 
   init() {
+    window.adminController = this;
     this.bindEvents();
     this.renderCategoryGrid();
 
     // Set initial values
     const selectChannel = document.getElementById('select-channel');
     if (selectChannel) selectChannel.value = this.currentChannelId;
+
+    const selectOsdMode = document.getElementById('select-osd-mode');
+    if (selectOsdMode) selectOsdMode.value = this.osdMode;
   }
 
   bindEvents() {
@@ -100,6 +105,14 @@ class AdminController {
     document.getElementById('chk-enable-static-fx')?.addEventListener('change', (e) => {
       this.staticFXEnabled = e.target.checked;
       effectsEngine.staticFXEnabled = this.staticFXEnabled;
+    });
+
+    document.getElementById('select-osd-mode')?.addEventListener('change', (e) => {
+      this.osdMode = e.target.value;
+      localStorage.setItem('bnsd_osd_mode', this.osdMode);
+      if (playerEngine.currentVideoItem) {
+        playerEngine.updateOSD(playerEngine.currentVideoItem);
+      }
     });
 
     // Category Toolbar
@@ -306,7 +319,8 @@ class AdminController {
       opacity: this.opacity,
       scanlinesEnabled: this.scanlinesEnabled,
       staticFXEnabled: this.staticFXEnabled,
-      washoutEnabled: this.washoutEnabled
+      washoutEnabled: this.washoutEnabled,
+      osdMode: this.osdMode
     };
 
     saveChannelConfig(this.currentChannelId, configData);

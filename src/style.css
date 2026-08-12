@@ -158,24 +158,28 @@ html, body {
   z-index: 30;
   font-family: 'VT323', monospace;
   color: var(--osd-green);
-  text-shadow: 0 0 10px var(--osd-glow);
+  text-shadow: 0 0 12px var(--osd-glow), 0 0 2px var(--osd-green);
   pointer-events: none;
   transition: opacity 0.5s ease;
+  user-select: none;
 }
 
-.osd-fade {
-  opacity: 0.9;
+.osd-container.hidden,
+.osd-container[data-osd-mode="hidden"] {
+  display: none !important;
 }
 
-.osd-fade.hidden {
-  opacity: 0;
+/* Hide category & title body when using clean header or VCR watermark modes */
+.osd-container[data-osd-mode="crt-header"] .osd-body,
+.osd-container[data-osd-mode="vcr-watermark"] .osd-body {
+  display: none;
 }
 
 .osd-header {
   display: flex;
   align-items: center;
   gap: 15px;
-  font-size: 2rem;
+  font-size: 2.2rem;
   letter-spacing: 2px;
 }
 
@@ -187,6 +191,23 @@ html, body {
   font-weight: bold;
   font-size: 1.4rem;
   text-shadow: none;
+  line-height: 1.2;
+}
+
+/* VCR Watermark Badge Style */
+.osd-container[data-osd-mode="vcr-watermark"] .osd-badge {
+  background: transparent;
+  color: var(--osd-green);
+  font-weight: normal;
+  font-size: 1.8rem;
+  text-shadow: 0 0 10px var(--osd-glow);
+  padding: 0;
+  animation: osd-play-pulse 2s infinite ease-in-out;
+}
+
+@keyframes osd-play-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 .osd-body {

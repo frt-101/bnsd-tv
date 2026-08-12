@@ -411,24 +411,41 @@ class PlayerEngine {
   /**
    * Update OSD HUD Labels
    */
+  /**
+   * Update OSD HUD Labels
+   */
   updateOSD(videoItem) {
+    const hud = document.getElementById('osd-hud');
+    if (!hud) return;
+
+    const admin = window.adminController;
+    const osdMode = admin ? admin.osdMode : (localStorage.getItem('bnsd_osd_mode') || 'crt-header');
+    hud.setAttribute('data-osd-mode', osdMode);
+
+    if (osdMode === 'hidden') {
+      hud.classList.add('hidden');
+      return;
+    }
+
+    hud.classList.remove('hidden');
+
     const catLabel = document.getElementById('osd-category-label');
     const titleLabel = document.getElementById('osd-title-label');
     const eraLabel = document.getElementById('osd-era-badge');
+    const channelLabel = document.getElementById('osd-channel-label');
 
-    if (catLabel) catLabel.textContent = (videoItem.category || 'VINTAGE STREAM').toUpperCase();
-    if (titleLabel) titleLabel.textContent = videoItem.title || 'BNSD TV Stream';
-    if (eraLabel) eraLabel.textContent = videoItem.decade || '1990s';
+    const chNum = admin ? admin.getChannelNum(admin.currentChannelId) : '03';
 
-    // Pulse OSD visible for 5 seconds when video changes
-    const hud = document.getElementById('osd-hud');
-    if (hud) {
-      hud.classList.remove('hidden');
-      clearTimeout(this.osdHideTimeout);
-      this.osdHideTimeout = setTimeout(() => {
-        hud.classList.add('hidden');
-      }, 5000);
+    if (osdMode === 'vcr-watermark') {
+      if (channelLabel) channelLabel.textContent = 'BNSD TV';
+      if (eraLabel) eraLabel.textContent = 'PLAY ►';
+    } else {
+      if (channelLabel) channelLabel.textContent = `CH ${chNum} • BNSD TV`;
+      if (eraLabel) eraLabel.textContent = videoItem?.decade || '1990s';
     }
+
+    if (catLabel) catLabel.textContent = (videoItem?.category || 'VINTAGE STREAM').toUpperCase();
+    if (titleLabel) titleLabel.textContent = videoItem?.title || 'BNSD TV Stream';
   }
 
   updatePacingRules(commercialMax, generalMax, randomOffset) {

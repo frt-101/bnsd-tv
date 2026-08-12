@@ -34,7 +34,7 @@
     </div>
 
     <!-- On-Screen Display (OSD) Green CRT HUD -->
-    <div id="osd-hud" class="osd-container osd-fade">
+    <div id="osd-hud" class="osd-container" data-osd-mode="crt-header">
       <div class="osd-header">
         <span class="osd-channel-name" id="osd-channel-label">CH 03 • BNSD TV</span>
         <span class="osd-badge" id="osd-era-badge">1990s</span>
@@ -175,6 +175,19 @@
                 <input type="checkbox" id="chk-enable-static-fx" checked>
                 <span>Enable Analog CRT Channel Change Static Glitch Transition</span>
               </label>
+            </div>
+
+            <hr>
+
+            <div class="form-group">
+              <label for="select-osd-mode">On-Screen Display (OSD) Vibe:</label>
+              <select id="select-osd-mode" class="form-control">
+                <option value="crt-header">Clean CRT Header (CH 03 • BNSD TV [1990s])</option>
+                <option value="vcr-watermark">Ultra-Minimal VCR Watermark (BNSD TV • PLAY ►)</option>
+                <option value="full-info">Classic Full Info (Channel + Category + Title)</option>
+                <option value="hidden">Hidden (No OSD Overlay)</option>
+              </select>
+              <p class="field-help">Choose the permanent retro watermark style displayed in the top-left corner of the stream.</p>
             </div>
           </div>
 
