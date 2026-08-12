@@ -7,8 +7,12 @@ import { subscribeChannelConfig } from './firebase.js';
 async function bootstrapApp() {
   console.log("Initializing BNSD TV...");
 
-  // Clear any stale dead video cache from previous test runs
-  localStorage.removeItem('bnsd_dead_video_ids');
+  // Give every video a fresh chance each launch (e.g. after the kiosk's
+  // overnight power-off / morning relaunch) rather than permanently
+  // quarantining videos that hit a one-off YouTube blip. Must go through
+  // catalogManager so the in-memory flag set is cleared too, not just the
+  // persisted copy.
+  catalogManager.clearDeadVideoFlags();
 
   // 1. Initialize Retro Effects Engine
   effectsEngine.init();
@@ -59,14 +63,15 @@ async function bootstrapApp() {
     }
   });
 
-  // 6. Initialize YouTube Player Engine and Start Stream Immediately
+  // 6. Initialize YouTube Player Engine and Start Stream once players are ready
   const queue = catalogManager.generateChannelQueue(channelParam, adminController.enabledCategories);
-  
+
   const countEl = document.getElementById('tel-queue-count');
   if (countEl) countEl.textContent = `${queue.length} videos`;
-  
-  playerEngine.init();
-  playerEngine.startStream(queue, 0);
+
+  playerEngine.init(() => {
+    playerEngine.startStream(queue, 0);
+  });
 }
 
 // Launch application on DOM Ready

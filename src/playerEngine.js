@@ -10,6 +10,12 @@ class PlayerEngine {
 
     this.queue = [];
     this.currentIndex = 0;
+    this.consecutiveErrorCount = 0;
+
+    // Tracks which video object is actually loaded/cued on each physical player,
+    // so error handling can identify and quarantine the right video regardless
+    // of which player (active or preloading) reported the error.
+    this.cuedItems = { A: null, B: null };
 
     // Config Rules
     this.commercialMaxSec = 45;
@@ -106,9 +112,13 @@ class PlayerEngine {
   playCurrentVideo() {
     if (!this.queue || this.queue.length === 0) return;
 
+    // Skip over any videos flagged dead since this index was queued
+    // (e.g. quarantined by the other player, or restored from a prior session).
+    this.currentIndex = this.findNextLiveIndex(this.currentIndex);
+
     this.currentVideoItem = this.queue[this.currentIndex];
+    this.cuedItems[this.activePlayerId] = this.currentVideoItem;
     const activePlayer = this.getActivePlayer();
-    const inactivePlayer = this.getInactivePlayer();
 
     // Determine smart clip duration and start offset
     const { startSec, maxDurationSec } = this.calculateSmartClip(this.currentVideoItem);
@@ -143,26 +153,57 @@ class PlayerEngine {
     this.updateOSD(this.currentVideoItem);
 
     // Preload NEXT video on inactive player
-    const nextIndex = (this.currentIndex + 1) % this.queue.length;
-    const nextItem = this.queue[nextIndex];
-    if (nextItem) {
-      const nextClip = this.calculateSmartClip(nextItem);
-      if (inactivePlayer && typeof inactivePlayer.cueVideoById === 'function') {
-        try {
-          inactivePlayer.cueVideoById(nextItem.videoId, nextClip.startSec);
-          inactivePlayer.mute();
-        } catch (e) {}
-      } else {
-        const inactiveId = this.activePlayerId === 'A' ? 'player-b' : 'player-a';
-        const nextIframe = document.getElementById(inactiveId);
-        if (nextIframe) {
-          nextIframe.src = `https://www.youtube.com/embed/${nextItem.videoId}?enablejsapi=1&autoplay=1&mute=1&controls=0&playsinline=1&cc_load_policy=0&iv_load_policy=3&modestbranding=1&rel=0&start=${nextClip.startSec}`;
-        }
-      }
-    }
+    this.preloadNext();
 
     // Start clip timing monitor
     this.startClipTimer();
+  }
+
+  /**
+   * Cue the next live (non-quarantined) video on the currently inactive player.
+   */
+  preloadNext() {
+    if (!this.queue || this.queue.length === 0) return;
+
+    const inactivePlayer = this.getInactivePlayer();
+    const inactivePlayerId = this.activePlayerId === 'A' ? 'B' : 'A';
+    const nextIndex = this.findNextLiveIndex((this.currentIndex + 1) % this.queue.length);
+    const nextItem = this.queue[nextIndex];
+    if (!nextItem) return;
+
+    this.cuedItems[inactivePlayerId] = nextItem;
+    const nextClip = this.calculateSmartClip(nextItem);
+
+    if (inactivePlayer && typeof inactivePlayer.cueVideoById === 'function') {
+      try {
+        inactivePlayer.cueVideoById(nextItem.videoId, nextClip.startSec);
+        inactivePlayer.mute();
+      } catch (e) {}
+    } else {
+      const inactiveId = inactivePlayerId === 'A' ? 'player-a' : 'player-b';
+      const nextIframe = document.getElementById(inactiveId);
+      if (nextIframe) {
+        nextIframe.src = `https://www.youtube.com/embed/${nextItem.videoId}?enablejsapi=1&autoplay=1&mute=1&controls=0&playsinline=1&cc_load_policy=0&iv_load_policy=3&modestbranding=1&rel=0&start=${nextClip.startSec}`;
+      }
+    }
+  }
+
+  /**
+   * Find the next index in the queue whose video isn't flagged dead, starting
+   * at startIndex (inclusive). Falls back to startIndex if every video in the
+   * queue is currently quarantined, rather than looping forever.
+   */
+  findNextLiveIndex(startIndex) {
+    const len = this.queue.length;
+    if (len === 0) return 0;
+    for (let step = 0; step < len; step++) {
+      const idx = (startIndex + step) % len;
+      if (!catalogManager.deadVideoIds.has(this.queue[idx].videoId)) {
+        return idx;
+      }
+    }
+    console.warn("Every video in the current queue is flagged dead. Playing anyway.");
+    return startIndex;
   }
 
   /**
@@ -197,8 +238,8 @@ class PlayerEngine {
       // Swap active player container focus
       this.toggleActivePlayerFocus();
 
-      // Increment queue index
-      this.currentIndex = (this.currentIndex + 1) % this.queue.length;
+      // Advance to the next live (non-quarantined) queue index
+      this.currentIndex = this.findNextLiveIndex((this.currentIndex + 1) % this.queue.length);
 
       // Play next video on the newly active player
       this.playCurrentVideo();
@@ -239,41 +280,33 @@ class PlayerEngine {
   }
 
   /**
-   * Auto-skip unavailable, private, or non-embeddable YouTube videos
+   * Auto-skip unavailable, private, or non-embeddable YouTube videos.
+   * Quarantines whichever video actually errored (active or preloading)
+   * so it's excluded from the queue immediately, not just on the next
+   * full rotation.
    */
   handlePlayerError(playerId, event) {
-    // IGNORE errors from inactive background preloader
+    const erroredItem = this.cuedItems[playerId];
+    if (erroredItem) {
+      catalogManager.markVideoDead(erroredItem.videoId, erroredItem.title);
+    }
+
+    // Errors from the inactive background preloader: just re-cue a live
+    // replacement, no need to disrupt what's currently on screen.
     if (playerId !== this.activePlayerId) {
-      console.warn(`Inactive background player ${playerId} notice (error ${event.data}). Ignoring.`);
-      console.log(`Preloader Player ${playerId} hit unplayable video. Preloading replacement video...`);
-      const replacementIndex = (this.currentIndex + 2) % this.queue.length;
-      const replacementItem = this.queue[replacementIndex];
-      if (replacementItem) {
-        const inactivePlayer = this.getInactivePlayer();
-        const clip = this.calculateSmartClip(replacementItem);
-        if (inactivePlayer && typeof inactivePlayer.cueVideoById === 'function') {
-          try {
-            inactivePlayer.cueVideoById(replacementItem.videoId, clip.startSec);
-            inactivePlayer.mute();
-          } catch (e) {}
-        }
-      }
+      console.warn(`Preloader player ${playerId} hit an unplayable video (error ${event.data}). Re-cueing replacement.`);
+      this.preloadNext();
       return;
     }
 
-    // Flag current active video as dead/quarantined in localStorage
-    if (this.currentVideoItem) {
-      catalogManager.markVideoDead(this.currentVideoItem.videoId, this.currentVideoItem.title);
-    }
-
-    this.consecutiveErrorCount = (this.consecutiveErrorCount || 0) + 1;
+    this.consecutiveErrorCount++;
     console.warn(`Active player error (${event.data}). Consecutive error count: ${this.consecutiveErrorCount}`);
 
-    // If 3 consecutive errors occur, fast-forward 5 steps ahead in queue without static glitch
+    // If 3 consecutive errors occur, fast-forward 5 live steps ahead in queue without static glitch
     if (this.consecutiveErrorCount >= 3) {
       console.warn("Multiple consecutive video errors. Fast-forwarding queue...");
       this.consecutiveErrorCount = 0;
-      this.currentIndex = (this.currentIndex + 5) % this.queue.length;
+      this.currentIndex = this.findNextLiveIndex((this.currentIndex + 5) % this.queue.length);
       this.toggleActivePlayerFocus();
       this.playCurrentVideo();
       return;

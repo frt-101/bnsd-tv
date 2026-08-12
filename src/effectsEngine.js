@@ -65,9 +65,13 @@ class EffectsEngine {
       return;
     }
 
-    // Clear any active static timeouts to prevent overlapping animations or canvas lockup
+    // Clear any active static timeouts/frames to prevent overlapping animations or canvas lockup
     clearTimeout(this.staticPeakTimeout);
     clearTimeout(this.staticEndTimeout);
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
 
     this.isStaticActive = true;
     if (this.canvas) {

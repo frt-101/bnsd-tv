@@ -1,0 +1,22 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // BNSD TV channel configs (categories, pacing, CRT vibe settings) written
+    // by the admin panel at /?admin=true. There is currently no login system
+    // in front of that panel, so writes are locked down by default here.
+    //
+    // Before enabling remote (multi-projector) sync with real Firebase keys:
+    //   1. Add Firebase Authentication (even a single shared operator account).
+    //   2. Change the write rule below to require request.auth != null.
+    // Until then, each projector falls back to its own local browser storage
+    // (see src/firebase.js) and this collection is read-only from the client.
+    match /channels/{channelId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

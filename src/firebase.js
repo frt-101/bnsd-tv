@@ -1,8 +1,10 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 
-// Default Firebase Configuration template
-// Replace with your Firebase Project config keys when deploying
+// Default Firebase Configuration template — these are placeholder values, not
+// a real project. Replace with your Firebase Project config keys to enable
+// live multi-projector sync (and see docs/ANDROID_PROJECTOR_SETUP.md for the
+// Firestore security rules that must be configured before doing so).
 const firebaseConfig = {
   apiKey: "AIzaSyBNSDTVConfigApiKeyHere",
   authDomain: "bnsd-tv.firebaseapp.com",
@@ -12,15 +14,21 @@ const firebaseConfig = {
   appId: "1:1234567890:web:bnsdtvapp"
 };
 
+const isPlaceholderConfig = firebaseConfig.apiKey === "AIzaSyBNSDTVConfigApiKeyHere";
+
 let db = null;
 let isFirebaseConnected = false;
 
-try {
-  const app = initializeApp(firebaseConfig);
-  db = getFirestore(app);
-  isFirebaseConnected = true;
-} catch (e) {
-  console.warn("Firebase not initialized using default keys. Falling back to local offline storage sync.");
+if (isPlaceholderConfig) {
+  console.warn("Firebase config is still the placeholder template — running in local-storage-only mode. Set real project keys in src/firebase.js to enable cross-projector sync.");
+} else {
+  try {
+    const app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+    isFirebaseConnected = true;
+  } catch (e) {
+    console.warn("Firebase initialization failed. Falling back to local offline storage sync.", e);
+  }
 }
 
 export { db, isFirebaseConnected };
