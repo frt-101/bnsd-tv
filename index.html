@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>BNSD TV - Ambient Era Video Streamer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=VT323&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <div id="app" class="crt-screen">
+    <!-- Ambient Wall Projection Filter Wrapper -->
+    <div id="projection-container" class="projection-washout">
+      
+      <!-- Dual iFrame Double-Buffered Player -->
+      <div id="player-wrapper">
+        <div id="iframe-a-container" class="player-iframe-container active-player">
+          <iframe id="player-a" src="https://www.youtube.com/embed/Aw0Bywq1wf0?enablejsapi=1&autoplay=1&mute=1&controls=0&playsinline=1&cc_load_policy=0&iv_load_policy=3&modestbranding=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture" frameborder="0" style="width:100%; height:100%; border:none;"></iframe>
+        </div>
+        <div id="iframe-b-container" class="player-iframe-container inactive-player">
+          <iframe id="player-b" src="https://www.youtube.com/embed/ZiPgbBSwhi0?enablejsapi=1&autoplay=1&mute=1&controls=0&playsinline=1&cc_load_policy=0&iv_load_policy=3&modestbranding=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture" frameborder="0" style="width:100%; height:100%; border:none;"></iframe>
+        </div>
+      </div>
+
+      <!-- Retro CRT Analog Overlays -->
+      <div class="crt-scanlines"></div>
+      <div class="crt-vignette"></div>
+      <canvas id="crt-static-canvas" class="crt-static-layer"></canvas>
+    </div>
+
+    <!-- On-Screen Display (OSD) Green CRT HUD -->
+    <div id="osd-hud" class="osd-container osd-fade">
+      <div class="osd-header">
+        <span class="osd-channel-name" id="osd-channel-label">CH 03 • BNSD TV</span>
+        <span class="osd-badge" id="osd-era-badge">1990s</span>
+      </div>
+      <div class="osd-body">
+        <div class="osd-category" id="osd-category-label">COMMERCIALS</div>
+        <div class="osd-title" id="osd-title-label">Loading Video Catalog...</div>
+      </div>
+    </div>
+
+    <!-- Admin Panel Modal / Drawer (Accessible via ?admin=true or pressing 'A' on keyboard) -->
+    <div id="admin-modal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2>BNSD TV — Control Center</h2>
+          <button id="btn-close-admin" class="btn-close">&times;</button>
+        </div>
+        
+        <div class="modal-tabs">
+          <button class="tab-btn active" data-tab="tab-channels">Projector Channels</button>
+          <button class="tab-btn" data-tab="tab-categories">Categories Filter</button>
+          <button class="tab-btn" data-tab="tab-pacing">Pacing & Clip Rules</button>
+          <button class="tab-btn" data-tab="tab-vibe">Projection & CRT Vibe</button>
+          <button class="tab-btn" data-tab="tab-catalog">Catalog & CSV</button>
+        </div>
+
+        <div class="modal-body">
+          
+          <!-- TAB 1: Projector Channels -->
+          <div id="tab-channels" class="tab-content active">
+            <div class="form-group">
+              <label for="select-channel">Current Projector Channel Preset:</label>
+              <select id="select-channel" class="form-control">
+                <option value="projector-bar">Bar Projector (Channel 1)</option>
+                <option value="projector-dining">Dining Room Projector (Channel 2)</option>
+                <option value="projector-lounge">Lounge Projector (Channel 3)</option>
+                <option value="projector-patio">Patio Projector (Channel 4)</option>
+              </select>
+              <p class="field-help">Each projector channel runs its own unique desynchronized shuffle queue so multiple screens never play the same video at the same time.</p>
+            </div>
+
+            <div class="form-group" style="background: rgba(0, 255, 170, 0.06); padding: 14px; border-radius: 8px; border: 1px solid rgba(0, 255, 170, 0.2);">
+              <label for="input-test-url" style="color: var(--accent-color);">Direct YouTube Video Tester:</label>
+              <div style="display: flex; gap: 8px; margin-top: 6px;">
+                <input type="text" id="input-test-url" class="form-control" placeholder="Paste YouTube link or ID (e.g. https://www.youtube.com/watch?v=...)" style="font-size: 0.85rem;">
+                <button id="btn-play-test-url" class="btn-primary" style="white-space: nowrap; font-size: 0.85rem; padding: 6px 14px;">Play Video</button>
+              </div>
+              <p class="field-help">Paste any working YouTube link to test playback directly on BNSD TV.</p>
+            </div>
+            
+            <div class="status-card">
+              <h3>Live Stream Telemetry</h3>
+              <div class="telemetry-grid">
+                <div><span>Channel ID:</span> <strong id="tel-channel-id">projector-bar</strong></div>
+                <div><span>Active Queue:</span> <strong id="tel-queue-count">0 videos</strong></div>
+                <div><span>Currently Playing:</span> <strong id="tel-current-video">None</strong></div>
+                <div><span>Category:</span> <strong id="tel-current-cat">-</strong></div>
+                <div><span>Elapsed / Cutoff:</span> <strong id="tel-time-info">0s / 0s</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 2: Categories Filter -->
+          <div id="tab-categories" class="tab-content">
+            <p class="section-desc">Toggle which content categories are allowed to stream on this projector. Uncheck any category that is lame, silly, or not a good fit.</p>
+            
+            <div class="category-toolbar">
+              <button id="btn-select-all-cats" class="btn-sm">Select All</button>
+              <button id="btn-deselect-all-cats" class="btn-sm">Deselect All</button>
+            </div>
+
+            <div id="categories-grid" class="categories-grid">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- TAB 3: Pacing & Clip Rules -->
+          <div id="tab-pacing" class="tab-content">
+            <p class="section-desc">Configure pacing so videos stay lively and active like someone is channel surfing. Commercials can play in full, while longer shows/music switch automatically to prevent monotony.</p>
+
+            <div class="form-group">
+              <label for="input-commercial-max">Commercials Max Duration (seconds):</label>
+              <input type="number" id="input-commercial-max" class="form-control" value="45" min="10" max="180">
+              <p class="field-help">Commercials are usually 20-30 seconds. Plays in full unless exceeding this limit.</p>
+            </div>
+
+            <div class="form-group">
+              <label for="input-general-clip-max">General Content Clip Limit (seconds):</label>
+              <input type="number" id="input-general-clip-max" class="form-control" value="90" min="15" max="600">
+              <p class="field-help">Music, Movies, Cartoons, Sports will automatically switch after this duration to maintain visual momentum.</p>
+            </div>
+
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="chk-random-offset" checked>
+                <span>Enable Random Highlights Jump (Start videos at 15-40% offset for non-commercials)</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- TAB 4: Projection & CRT Vibe -->
+          <div id="tab-vibe" class="tab-content">
+            <p class="section-desc">Tune the visual aesthetic so BNSD TV looks like authentic vintage wall art projected inside your restaurant.</p>
+
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="chk-enable-washout" checked>
+                <span>Enable Washed-Out Wall Art Mode (Soft contrast & brightness for ambient projection)</span>
+              </label>
+            </div>
+
+            <div class="form-group">
+              <label for="range-contrast">Washout Contrast (<span id="val-contrast">75</span>%):</label>
+              <input type="range" id="range-contrast" min="40" max="120" value="75" class="form-range">
+            </div>
+
+            <div class="form-group">
+              <label for="range-brightness">Washout Brightness (<span id="val-brightness">110</span>%):</label>
+              <input type="range" id="range-brightness" min="80" max="150" value="110" class="form-range">
+            </div>
+
+            <div class="form-group">
+              <label for="range-opacity">Overlay Dimmer (<span id="val-opacity">90</span>%):</label>
+              <input type="range" id="range-opacity" min="30" max="100" value="90" class="form-range">
+            </div>
+
+            <hr>
+
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="chk-enable-scanlines" checked>
+                <span>Enable Retro CRT Scanlines & Curved Glass Overlay</span>
+              </label>
+            </div>
+
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="chk-enable-static-fx" checked>
+                <span>Enable Analog CRT Channel Change Static Glitch Transition</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- TAB 5: Catalog & CSV -->
+          <div id="tab-catalog" class="tab-content">
+            <div class="catalog-info-card">
+              <h3>Active Catalog Dataset</h3>
+              <p>Loaded File: <strong>90s_playlist.csv</strong></p>
+              <p>Total Indexed Videos: <strong id="cat-total-count">0</strong></p>
+              <p>Flagged Dead Videos (Quarantined): <strong id="cat-dead-count" style="color: #ff5555;">0</strong></p>
+            </div>
+
+            <div class="quarantine-card" style="margin-top: 16px; background: rgba(255, 85, 85, 0.06); border: 1px solid rgba(255, 85, 85, 0.2); padding: 14px; border-radius: 8px;">
+              <h4 style="font-size: 0.95rem; color: #ff6b6b; margin-bottom: 8px;">Dead Video Quarantine</h4>
+              <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">Videos that encounter YouTube playback errors are automatically flagged and quarantined from active streams without altering your original CSV file.</p>
+              <div style="display: flex; gap: 10px;">
+                <button id="btn-export-dead" class="btn-sm">Export Dead Videos (.csv)</button>
+                <button id="btn-clear-dead" class="btn-sm" style="border-color: rgba(255,85,85,0.4); color: #ff8888;">Clear All Dead Flags</button>
+              </div>
+            </div>
+
+            <div class="form-group margin-top" style="margin-top: 20px;">
+              <label for="input-csv-file">Upload / Replace CSV Catalog File:</label>
+              <input type="file" id="input-csv-file" accept=".csv" class="form-control">
+              <p class="field-help">Upload a CSV file containing headers: <code>decade,year,channel,video_id,title,start_seconds,end_seconds</code></p>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="modal-footer">
+          <button id="btn-save-settings" class="btn-primary">Apply Settings & Refresh Stream</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

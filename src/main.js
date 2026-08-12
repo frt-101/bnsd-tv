@@ -1,0 +1,77 @@
+import { catalogManager } from './catalogManager.js';
+import { playerEngine } from './playerEngine.js';
+import { effectsEngine } from './effectsEngine.js';
+import { adminController } from './admin.js';
+import { subscribeChannelConfig } from './firebase.js';
+
+async function bootstrapApp() {
+  console.log("Initializing BNSD TV...");
+
+  // Clear any stale dead video cache from previous test runs
+  localStorage.removeItem('bnsd_dead_video_ids');
+
+  // 1. Initialize Retro Effects Engine
+  effectsEngine.init();
+
+  // 2. Parse URL Parameters
+  const urlParams = new URLSearchParams(window.location.search);
+  const channelParam = urlParams.get('channel') || 'projector-bar';
+  const openAdminParam = urlParams.get('admin');
+
+  adminController.currentChannelId = channelParam;
+  const selectChannel = document.getElementById('select-channel');
+  if (selectChannel) selectChannel.value = channelParam;
+
+  // Set OSD Channel Title
+  const osdChannel = document.getElementById('osd-channel-label');
+  if (osdChannel) {
+    osdChannel.textContent = `CH ${adminController.getChannelNum(channelParam)} • BNSD TV`;
+  }
+
+  // 3. Load CSV Catalog (90s_playlist.csv)
+  const isLoaded = await catalogManager.loadCSV('/90s_playlist.csv');
+  if (!isLoaded) {
+    console.error("Failed to load 90s_playlist.csv catalog.");
+    return;
+  }
+
+  // 4. Initialize Admin Controller & Categories Grid
+  adminController.init();
+
+  // If ?admin=true in URL, open modal automatically
+  if (openAdminParam === 'true') {
+    document.getElementById('admin-modal')?.classList.remove('hidden');
+  }
+
+  // 5. Subscribe to Firestore / LocalStorage real-time channel updates
+  subscribeChannelConfig(channelParam, (remoteConfig) => {
+    if (remoteConfig) {
+      if (remoteConfig.enabledCategories) adminController.enabledCategories = remoteConfig.enabledCategories;
+      if (remoteConfig.commercialMaxSec) adminController.commercialMaxSec = remoteConfig.commercialMaxSec;
+      if (remoteConfig.generalClipMaxSec) adminController.generalClipMaxSec = remoteConfig.generalClipMaxSec;
+      if (remoteConfig.randomOffsetEnabled !== undefined) adminController.randomOffsetEnabled = remoteConfig.randomOffsetEnabled;
+      
+      playerEngine.updatePacingRules(
+        adminController.commercialMaxSec,
+        adminController.generalClipMaxSec,
+        adminController.randomOffsetEnabled
+      );
+    }
+  });
+
+  // 6. Initialize YouTube Player Engine and Start Stream Immediately
+  const queue = catalogManager.generateChannelQueue(channelParam, adminController.enabledCategories);
+  
+  const countEl = document.getElementById('tel-queue-count');
+  if (countEl) countEl.textContent = `${queue.length} videos`;
+  
+  playerEngine.init();
+  playerEngine.startStream(queue, 0);
+}
+
+// Launch application on DOM Ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootstrapApp);
+} else {
+  bootstrapApp();
+}
