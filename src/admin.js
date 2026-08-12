@@ -29,14 +29,13 @@ class AdminController {
   }
 
   bindEvents() {
-    // Open/Close Modal
-    const btnOpen = document.getElementById('btn-open-admin');
+    // Close Modal. The projected video screen is intentionally button-free
+    // (it's just a wall projection with no input device) — the admin panel
+    // is only ever opened via the ?admin=true URL or the 'A' key shortcut
+    // below, from a laptop/tablet/keyboard, never from an on-screen control.
     const btnClose = document.getElementById('btn-close-admin');
     const modal = document.getElementById('admin-modal');
 
-    if (btnOpen && modal) {
-      btnOpen.addEventListener('click', () => modal.classList.remove('hidden'));
-    }
     if (btnClose && modal) {
       btnClose.addEventListener('click', () => modal.classList.add('hidden'));
     }
@@ -55,30 +54,19 @@ class AdminController {
       });
     });
 
-    // Quick Controls Bar
-    document.getElementById('btn-next-video')?.addEventListener('click', () => {
-      playerEngine.nextVideo();
-    });
-
-    document.getElementById('btn-toggle-osd')?.addEventListener('click', () => {
-      const hud = document.getElementById('osd-hud');
-      if (hud) hud.classList.toggle('hidden');
-    });
-
-    document.getElementById('btn-toggle-washout')?.addEventListener('click', () => {
-      this.washoutEnabled = !this.washoutEnabled;
-      const chkWashout = document.getElementById('chk-enable-washout');
-      if (chkWashout) chkWashout.checked = this.washoutEnabled;
-      effectsEngine.updateWashoutSettings(this.contrast, this.brightness, this.opacity, this.washoutEnabled);
-    });
-
-    // Keyboard Shortcuts (N = Next, O = OSD, W = Washout, A = Admin)
+    // Keyboard Shortcuts (N = Next, O = OSD, W = Washout, A = Admin).
+    // No on-screen equivalents by design — see the button-free note above.
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
 
       if (e.key === 'n' || e.key === 'N') playerEngine.nextVideo();
       if (e.key === 'o' || e.key === 'O') document.getElementById('osd-hud')?.classList.toggle('hidden');
-      if (e.key === 'w' || e.key === 'W') document.getElementById('btn-toggle-washout')?.click();
+      if (e.key === 'w' || e.key === 'W') {
+        this.washoutEnabled = !this.washoutEnabled;
+        const chkWashout = document.getElementById('chk-enable-washout');
+        if (chkWashout) chkWashout.checked = this.washoutEnabled;
+        effectsEngine.updateWashoutSettings(this.contrast, this.brightness, this.opacity, this.washoutEnabled);
+      }
       if (e.key === 'a' || e.key === 'A') modal?.classList.toggle('hidden');
     });
 
@@ -136,7 +124,7 @@ class AdminController {
       if (!val) return;
 
       let vid = val;
-      const match = val.match(/(?:v=|\/embed\/|\/watch\?v=||youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+      const match = val.match(/(?:[?&]v=|\/embed\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
       if (match && match[1]) {
         vid = match[1];
       }
@@ -250,13 +238,23 @@ class AdminController {
 
       const card = document.createElement('label');
       card.className = `cat-card ${isChecked ? 'active' : ''}`;
-      card.innerHTML = `
-        <input type="checkbox" value="${cat.name}" class="cat-checkbox" ${isChecked ? 'checked' : ''}>
-        <span class="cat-name">${cat.name}</span>
-        <span class="cat-count">(${cat.count})</span>
-      `;
 
-      const cb = card.querySelector('.cat-checkbox');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = cat.name;
+      cb.className = 'cat-checkbox';
+      cb.checked = isChecked;
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'cat-name';
+      nameSpan.textContent = cat.name;
+
+      const countSpan = document.createElement('span');
+      countSpan.className = 'cat-count';
+      countSpan.textContent = `(${cat.count})`;
+
+      card.append(cb, nameSpan, countSpan);
+
       cb.addEventListener('change', (e) => {
         if (e.target.checked) {
           card.classList.add('active');
