@@ -3,6 +3,7 @@ import { playerEngine } from './playerEngine.js';
 import { effectsEngine } from './effectsEngine.js';
 import { adminController } from './admin.js';
 import { subscribeChannelConfig } from './firebase.js';
+import { startWatchdog } from './watchdog.js';
 
 async function bootstrapApp() {
   console.log("Initializing BNSD TV...");
@@ -71,6 +72,7 @@ async function bootstrapApp() {
 
   playerEngine.init(() => {
     playerEngine.startStream(queue, 0);
+    startWatchdog();
   });
 }
 

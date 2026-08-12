@@ -12,6 +12,11 @@ class PlayerEngine {
     this.currentIndex = 0;
     this.consecutiveErrorCount = 0;
 
+    // Watchdog support: timestamp of the last successful channel change, and
+    // the pending autoplay-retry timer for whatever's currently loading.
+    this.lastAdvanceAt = null;
+    this.autoplayFallbackTimeout = null;
+
     // Tracks which video object is actually loaded/cued on each physical player,
     // so error handling can identify and quarantine the right video regardless
     // of which player (active or preloading) reported the error.
@@ -118,6 +123,7 @@ class PlayerEngine {
 
     this.currentVideoItem = this.queue[this.currentIndex];
     this.cuedItems[this.activePlayerId] = this.currentVideoItem;
+    this.lastAdvanceAt = Date.now();
     const activePlayer = this.getActivePlayer();
 
     // Determine smart clip duration and start offset
@@ -130,6 +136,7 @@ class PlayerEngine {
       try {
         activePlayer.loadVideoById(this.currentVideoItem.videoId, startSec);
         activePlayer.mute();
+        this.scheduleAutoplayFallback(activePlayer, this.currentVideoItem.videoId);
       } catch (e) {
         console.warn("loadVideoById fallback:", e);
       }
@@ -186,6 +193,31 @@ class PlayerEngine {
         nextIframe.src = `https://www.youtube.com/embed/${nextItem.videoId}?enablejsapi=1&autoplay=1&mute=1&controls=0&playsinline=1&cc_load_policy=0&iv_load_policy=3&modestbranding=1&rel=0&start=${nextClip.startSec}`;
       }
     }
+  }
+
+  /**
+   * Some kiosk WebViews are stricter about the URL's autoplay=1 param than
+   * they are about a JS-driven playVideo() call. If the active video hasn't
+   * actually started (still unstarted/cued) shortly after loading, nudge it
+   * directly through the Player API rather than waiting on the clip timer
+   * to eventually time it out.
+   */
+  scheduleAutoplayFallback(player, videoId) {
+    clearTimeout(this.autoplayFallbackTimeout);
+    this.autoplayFallbackTimeout = setTimeout(() => {
+      // Bail if the stream has already moved on to a different video.
+      if (!this.currentVideoItem || this.currentVideoItem.videoId !== videoId) return;
+
+      try {
+        if (typeof player.getPlayerState !== 'function') return;
+        const state = player.getPlayerState();
+        const isStalled = state === -1 /* UNSTARTED */ || state === 5 /* CUED */;
+        if (isStalled && typeof player.playVideo === 'function') {
+          console.warn(`Autoplay appears blocked for ${videoId} (state ${state}). Retrying via playVideo().`);
+          player.playVideo();
+        }
+      } catch (e) {}
+    }, 2000);
   }
 
   /**

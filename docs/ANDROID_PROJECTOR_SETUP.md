@@ -1,37 +1,52 @@
-# BNSD TV — Google Android Projector & Kiosk Setup Guide
+# BNSD TV — Android Projector & Kiosk Setup Guide (FreeKiosk)
 
-This guide explains how to configure your Google Android-powered projectors to automatically stream **BNSD TV** on power-up with zero manual interaction.
+This guide explains how to configure your Android-powered projectors to automatically stream **BNSD TV** on power-up with zero manual interaction, using [FreeKiosk](https://github.com/RushB-fr/freekiosk) — a free, open-source Android kiosk-mode app.
 
 ---
 
 ## 1. Required Android App
-We recommend using **Fully Kiosk Browser & Launcher** (available on Google Play Store or APK direct download).
+Install **FreeKiosk** from the Google Play Store (`com.freekiosk`) or by sideloading a release APK from the [GitHub releases page](https://github.com/RushB-fr/freekiosk/releases).
 
 ---
 
-## 2. Fully Kiosk Browser Configuration
+## 2. FreeKiosk Configuration
 
-### Step A: Set Start URL
-1. Open Fully Kiosk Browser settings on the projector.
-2. Go to **Web Browsing** -> **Start URL**.
-3. Enter your deployed BNSD TV URL with the projector's channel identifier:
+### Step A: Set Mode & Start URL
+1. Open FreeKiosk on the projector and set the display **Mode** to **WebView**.
+2. Set the **Start URL** to your deployed BNSD TV URL with the projector's channel identifier:
    - For Bar Projector: `https://bnsd-tv.web.app/?channel=projector-bar`
    - For Dining Projector: `https://bnsd-tv.web.app/?channel=projector-dining`
    - For Lounge Projector: `https://bnsd-tv.web.app/?channel=projector-lounge`
 
 ---
 
-### Step B: Enable Zero-Gesture Autoplay
-1. Go to **Web Browsing** -> **Web Features**.
-2. Enable **Autoplay Media Without User Gesture** (set to `ON`).
-3. Enable **Play Audio in Background** (if applicable).
+### Step B: Autoplay
+BNSD TV's video is muted end-to-end (URL param, JS `.mute()` call, and the
+iframe's `allow="autoplay"` permission), which is the one universal exception
+Chromium-based WebViews (what FreeKiosk, like virtually every Android kiosk
+browser, is built on) make to their autoplay-blocking policy — so this should
+just work with no configuration. If a video ever needs a manual tap to start,
+look for a media/autoplay/user-gesture toggle in FreeKiosk's WebView settings
+(not documented in FreeKiosk's public docs as of this writing). As a second
+layer of defense, the app itself now retries via the YouTube Player API's
+`playVideo()` call if a video hasn't actually started ~2 seconds after
+loading — see Section 5.
 
 ---
 
-### Step C: Auto-Start on Boot & Kiosk Mode
-1. Go to **Device Management**.
-2. Enable **Auto-Start on Boot** (set to `ON`).
-3. Enable **Kiosk Mode** (prevents Android status bar or popups from disturbing the wall projection).
+### Step C: Auto-Start on Boot & Lockdown
+1. Enable **Auto-start on boot**.
+2. Enable **immersive fullscreen / kiosk lockdown** (hides the Android nav
+   and status bars so nothing but the projected video is ever visible).
+3. Optionally enable **Device Owner mode** for full lockdown and set a PIN
+   on FreeKiosk's own settings, so nobody can back out of kiosk mode from
+   the touchscreen (there's no touchscreen anyway on a wall projection, but
+   it also protects against an accidental settings change if a laptop/mouse
+   is ever plugged in for maintenance).
+4. Confirm FreeKiosk's built-in **Watchdog Service** is enabled — it
+   auto-relaunches FreeKiosk if the OS kills it under memory pressure. This
+   is separate from (and complements) BNSD TV's own in-page watchdog in
+   Section 5, which catches a frozen player without the app itself crashing.
 
 ---
 
@@ -49,7 +64,7 @@ We recommend using **Fully Kiosk Browser & Launcher** (available on Google Play 
               |
               v
 +---------------------------+
-| Fully Kiosk Auto-Launches | -> Loads URL: https://bnsd-tv.web.app/?channel=projector-bar
+| FreeKiosk Auto-Launches   | -> Loads URL: https://bnsd-tv.web.app/?channel=projector-bar
 +-------------+-------------+
               |
               v
@@ -80,7 +95,22 @@ projector:
    only once real auth is wired up.
 3. Deploy the rules: `firebase deploy --only firestore:rules`.
 
-## 5. Daily Quarantine Reset
+## 5. In-App Reliability Watchdog
+
+Since this runs unattended for an entire business day, `src/watchdog.js`
+adds two self-healing behaviors on top of FreeKiosk's own process-level
+watchdog (Section 2, Step C):
+- **Stall detection:** if no channel change has happened in 5 minutes — far
+  longer than any configured clip cutoff — the player is assumed wedged
+  (frozen embed, dead event loop, etc.) and the page does a full reload.
+- **Preventive reload:** the page reloads itself every 6 hours regardless,
+  as cheap insurance against slow memory/state buildup in a long-lived
+  WebView tab.
+
+Both just call `window.location.reload()`, which re-runs the same boot flow
+in Section 3 — no manual intervention needed either way.
+
+## 6. Daily Quarantine Reset
 
 Videos that error during playback (deleted, region-locked, etc.) are
 automatically skipped and flagged "dead" for the rest of that session. That
@@ -89,7 +119,7 @@ morning relaunch cycle above also doubles as a daily reset — a video that
 failed once due to a transient YouTube hiccup gets retried the next day
 instead of being permanently blacklisted.
 
-## 6. Updating the Curated Video Catalog
+## 7. Updating the Curated Video Catalog
 
 The catalog is a single source of truth: **`90s_playlist.csv`** at the repo
 root. To change what plays:
