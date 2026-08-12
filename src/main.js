@@ -76,7 +76,8 @@ async function bootstrapApp() {
   if (countEl) countEl.textContent = `${queue.length} videos`;
 
   playerEngine.init(() => {
-    playerEngine.startStream(queue, 0);
+    const randomStartIndex = queue.length > 0 ? Math.floor(Math.random() * queue.length) : 0;
+    playerEngine.startStream(queue, randomStartIndex);
     startWatchdog();
   });
 }

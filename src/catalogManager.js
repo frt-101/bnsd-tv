@@ -217,18 +217,10 @@ class CatalogManager {
 
     if (pool.length === 0) return [];
 
-    // Seeded Fisher-Yates shuffle based on channelId string
-    const seed = this.hashString(channelId);
+    // Truly randomized Fisher-Yates shuffle per session
     const shuffled = [...pool];
-    
-    let currentSeed = seed;
-    const random = () => {
-      const x = Math.sin(currentSeed++) * 10000;
-      return x - Math.floor(x);
-    };
-
     for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(random() * (i + 1));
+      const j = Math.floor(Math.random() * (i + 1));
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
 

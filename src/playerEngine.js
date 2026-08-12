@@ -256,14 +256,20 @@ class PlayerEngine {
   calculateSmartClip(videoItem) {
     if (!videoItem) return { startSec: 0, maxDurationSec: 90 };
 
-    const isCommercial = videoItem.category.toLowerCase() === 'commercials';
-    let maxDurationSec = isCommercial ? this.commercialMaxSec : this.generalClipMaxSec;
+    const isCommercial = (videoItem.category || '').toLowerCase() === 'commercials';
+    let baseMaxDurationSec = isCommercial ? this.commercialMaxSec : this.generalClipMaxSec;
     let startSec = videoItem.startSec || 0;
 
-    // Random highlights jump for non-commercials if enabled
+    // Organic clip duration variance (+/- 15s) for dynamic TV pacing
+    let maxDurationSec = baseMaxDurationSec;
+    if (!isCommercial) {
+      const variance = Math.floor(Math.random() * 30) - 15;
+      maxDurationSec = Math.max(25, baseMaxDurationSec + variance);
+    }
+
+    // Random highlights jump for non-commercials (start between 15s and 120s)
     if (!isCommercial && this.randomOffsetEnabled && startSec === 0) {
-      // Pick random start offset between 10s and 60s
-      startSec = Math.floor(Math.random() * 50) + 10;
+      startSec = Math.floor(Math.random() * 105) + 15;
     }
 
     return { startSec, maxDurationSec };
