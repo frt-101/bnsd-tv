@@ -689,9 +689,11 @@ body.trinitron-mode {
 
 body.trinitron-mode #app {
   position: relative;
-  width: min(94vw, 1150px);
-  height: min(84vh, 650px);
-  border-radius: 36px;
+  /* Authentic 4:3 CRT Television Aspect Ratio */
+  width: min(82vw, calc(78vh * 4 / 3));
+  height: min(78vh, calc(82vw * 3 / 4));
+  aspect-ratio: 4 / 3;
+  border-radius: 32px;
   background-color: #000;
   box-shadow: 
     0 35px 90px rgba(0, 0, 0, 0.95),
@@ -704,12 +706,12 @@ body.trinitron-mode #app {
 body.trinitron-mode .trinitron-chassis {
   display: block;
   position: absolute;
-  top: -44px;
-  bottom: -24px;
-  left: -40px;
-  right: -40px;
+  top: -46px;
+  bottom: -26px;
+  left: -44px;
+  right: -44px;
   background: #b8101c;
-  border-radius: 24px;
+  border-radius: 28px;
   border: 1px solid #d61c28;
   box-shadow: 
     0 30px 80px rgba(0, 0, 0, 0.9),
@@ -719,12 +721,18 @@ body.trinitron-mode .trinitron-chassis {
   pointer-events: none;
 }
 
+/* Fill 4:3 video edge-to-edge inside the CRT screen window without black side bars */
+body.trinitron-mode .player-iframe-container iframe {
+  transform: scale(1.36);
+  transform-origin: center center;
+}
+
 /* Ensure inner CRT video screen is layered inside the chassis background */
 body.trinitron-mode .projection-washout {
-  border-radius: 16px;
+  border-radius: 20px;
   overflow: hidden;
   box-shadow: 
-    inset 0 0 30px rgba(0, 0, 0, 0.9),
+    inset 0 0 35px rgba(0, 0, 0, 0.95),
     0 0 0 4px #260204,
     0 0 0 8px #480509;
   z-index: 10;
@@ -737,18 +745,19 @@ body.trinitron-mode .osd-container {
 /* Iconic 80s Sony Trinitron Top-Left Bezel Brand Placement */
 .trinitron-top-left-brand {
   position: absolute;
-  top: 9px;
-  left: 20px;
+  top: 10px;
+  left: 24px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  gap: 3px;
 }
 
 /* BNSD Logo with Besley Bold Typography */
 .trinitron-sony-logo {
   font-family: 'Besley', 'Superclarendon', 'Clarendon', serif;
   font-weight: 700;
-  font-size: 1.65rem;
+  font-size: 1.6rem;
   letter-spacing: 0.08em;
   color: #ffffff;
   text-shadow: 
@@ -756,30 +765,34 @@ body.trinitron-mode .osd-container {
     0 0 1px rgba(255, 255, 255, 0.9);
   line-height: 1;
   text-transform: uppercase;
+  margin: 0;
+  padding: 0;
 }
 
 /* Sub-Badge directly under top-left logo (High Visibility) */
 .trinitron-sub-badge {
   font-family: 'Outfit', -apple-system, sans-serif;
   font-weight: 700;
-  font-size: 0.72rem;
+  font-size: 0.65rem;
   letter-spacing: 0.28em;
   color: #ffffff;
-  opacity: 0.95;
+  opacity: 0.92;
   text-transform: uppercase;
-  margin-top: 4px;
+  margin: 0;
+  padding: 0;
+  line-height: 1;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.9);
 }
 
 /* Top-Right Stereo Badge */
 .trinitron-top-right-badge {
   position: absolute;
-  top: 13px;
-  right: 20px;
+  top: 14px;
+  right: 24px;
   font-family: 'VT323', monospace;
   font-size: 0.95rem;
   letter-spacing: 0.15em;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.6);
 }
 
 /* Mobile Adjustments for Trinitron Chassis */
