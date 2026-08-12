@@ -14,6 +14,33 @@
 </head>
 <body>
   <div id="app" class="crt-screen">
+    <!-- BNSD Trinitron Retro TV Chassis Frame (Active in ?tv=true mode) -->
+    <div id="tv-frame-chassis" class="trinitron-chassis">
+      <div class="trinitron-top-bar">
+        <div class="trinitron-brand-box">
+          <span class="trinitron-sony-logo">BNSD</span>
+          <span class="trinitron-sub-logo">TRINITRON</span>
+        </div>
+        <div class="trinitron-badge">COLOR TV • MULTISCAN</div>
+      </div>
+
+      <div class="trinitron-side-speaker left-speaker"></div>
+      <div class="trinitron-side-speaker right-speaker"></div>
+
+      <div class="trinitron-bottom-bar">
+        <div class="trinitron-power-box">
+          <span class="power-indicator-led"></span>
+          <span class="power-text">POWER</span>
+        </div>
+        <div class="trinitron-controls-box">
+          <span class="tv-btn">CH ▲</span>
+          <span class="tv-btn">CH ▼</span>
+          <span class="tv-btn">VOL</span>
+        </div>
+        <span class="trinitron-model-text">KV-1995 • BNSD TV SYSTEM</span>
+      </div>
+    </div>
+
     <!-- Ambient Wall Projection Filter Wrapper -->
     <div id="projection-container" class="projection-washout">
       
@@ -188,6 +215,14 @@
                 <option value="hidden">Hidden (No OSD Overlay)</option>
               </select>
               <p class="field-help">Choose the permanent retro watermark style displayed in the top-left corner of the stream.</p>
+            </div>
+
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="chk-enable-tv-frame">
+                <span>Enable BNSD Trinitron TV Casing Frame (also active via <code>?tv=true</code>)</span>
+              </label>
+              <p class="field-help">Encloses the stream inside a vintage BNSD brand-red Trinitron CRT television set frame.</p>
             </div>
           </div>
 

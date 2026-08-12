@@ -18,6 +18,7 @@ class AdminController {
     this.staticFXEnabled = true;
     this.washoutEnabled = true;
     this.osdMode = localStorage.getItem('bnsd_osd_mode') || 'crt-header';
+    this.tvFrameEnabled = localStorage.getItem('bnsd_tv_frame') === 'true';
   }
 
   init() {
@@ -31,6 +32,9 @@ class AdminController {
 
     const selectOsdMode = document.getElementById('select-osd-mode');
     if (selectOsdMode) selectOsdMode.value = this.osdMode;
+
+    const chkTvFrame = document.getElementById('chk-enable-tv-frame');
+    if (chkTvFrame) chkTvFrame.checked = document.body.classList.contains('trinitron-mode');
   }
 
   bindEvents() {
@@ -113,6 +117,12 @@ class AdminController {
       if (playerEngine.currentVideoItem) {
         playerEngine.updateOSD(playerEngine.currentVideoItem);
       }
+    });
+
+    document.getElementById('chk-enable-tv-frame')?.addEventListener('change', (e) => {
+      this.tvFrameEnabled = e.target.checked;
+      localStorage.setItem('bnsd_tv_frame', this.tvFrameEnabled ? 'true' : 'false');
+      document.body.classList.toggle('trinitron-mode', this.tvFrameEnabled);
     });
 
     // Category Toolbar

@@ -22,6 +22,11 @@ async function bootstrapApp() {
   const urlParams = new URLSearchParams(window.location.search);
   const channelParam = urlParams.get('channel') || 'projector-bar';
   const openAdminParam = urlParams.get('admin');
+  const tvParam = urlParams.get('tv') || urlParams.get('frame') || urlParams.get('mode') || urlParams.get('theme');
+
+  const isTvMode = tvParam === 'true' || tvParam === 'trinitron' || tvParam === 'red' || (localStorage.getItem('bnsd_tv_frame') === 'true');
+  adminController.tvFrameEnabled = isTvMode;
+  document.body.classList.toggle('trinitron-mode', isTvMode);
 
   adminController.currentChannelId = channelParam;
   const selectChannel = document.getElementById('select-channel');

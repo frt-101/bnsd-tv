@@ -669,3 +669,218 @@ html, body {
     font-size: 1.05rem;
   }
 }
+
+/* ==========================================================================
+   BNSD TRINITRON CRT TV CASING FRAME (Active when body.trinitron-mode)
+   ========================================================================== */
+.trinitron-chassis {
+  display: none;
+}
+
+body.trinitron-mode {
+  background-color: #08090d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+  overflow: auto;
+}
+
+body.trinitron-mode #app {
+  position: relative;
+  width: min(94vw, 1150px);
+  height: min(84vh, 650px);
+  border-radius: 36px;
+  background-color: #000;
+  box-shadow: 
+    0 35px 90px rgba(0, 0, 0, 0.95),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+  overflow: visible;
+  margin: auto;
+}
+
+/* Red TV Frame Casing Body */
+body.trinitron-mode .trinitron-chassis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: absolute;
+  top: -46px;
+  bottom: -54px;
+  left: -52px;
+  right: -52px;
+  background: linear-gradient(145deg, #d81622 0%, #b0101a 40%, #7d0a11 100%);
+  border-radius: 44px;
+  border: 3px solid #f02d38;
+  box-shadow: 
+    0 40px 100px rgba(0, 0, 0, 0.95),
+    inset 0 4px 6px rgba(255, 255, 255, 0.35),
+    inset 0 -8px 16px rgba(0, 0, 0, 0.7),
+    0 0 0 4px #520509;
+  z-index: 1;
+  pointer-events: none;
+  padding: 12px 24px 14px 24px;
+}
+
+/* Ensure inner CRT video screen is layered inside the chassis background */
+body.trinitron-mode .projection-washout {
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 
+    inset 0 0 35px rgba(0, 0, 0, 0.95),
+    0 0 0 8px #1a0204,
+    0 0 0 12px #360509;
+  z-index: 10;
+}
+
+body.trinitron-mode .osd-container {
+  z-index: 35;
+}
+
+/* Top Bezel: Sony-Style BNSD Logo & Trinitron Sub-Badge */
+.trinitron-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  color: #e6e6e6;
+  height: 34px;
+}
+
+.trinitron-brand-box {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+/* Sony-Style Serif Typography for BNSD */
+.trinitron-sony-logo {
+  font-family: 'Times New Roman', 'Georgia', serif;
+  font-weight: 800;
+  font-size: 1.65rem;
+  letter-spacing: 0.32em;
+  color: #ededed;
+  text-shadow: 
+    0 1px 2px rgba(0, 0, 0, 0.9),
+    0 0 1px #fff,
+    0 -1px 0 rgba(255, 255, 255, 0.4);
+  line-height: 1;
+}
+
+.trinitron-sub-logo {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.25em;
+  color: #d1d1d1;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.trinitron-badge {
+  font-family: 'VT323', monospace;
+  font-size: 1rem;
+  letter-spacing: 1.5px;
+  color: rgba(255, 255, 255, 0.65);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* Side Speaker Grilles */
+.trinitron-side-speaker {
+  position: absolute;
+  top: 60px;
+  bottom: 65px;
+  width: 22px;
+  background-image: radial-gradient(#200305 35%, transparent 40%);
+  background-size: 6px 6px;
+  opacity: 0.7;
+}
+.trinitron-side-speaker.left-speaker { left: 14px; }
+.trinitron-side-speaker.right-speaker { right: 14px; }
+
+/* Bottom Bezel: Power LED & Buttons */
+.trinitron-bottom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 38px;
+  padding: 0 12px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.8rem;
+}
+
+.trinitron-power-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.power-indicator-led {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #33ff33;
+  box-shadow: 0 0 10px #33ff33, 0 0 2px #fff;
+}
+
+.trinitron-controls-box {
+  display: flex;
+  gap: 8px;
+}
+
+.tv-btn {
+  background: linear-gradient(180deg, #3d0508 0%, #1f0204 100%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-family: 'VT323', monospace;
+  font-size: 0.85rem;
+  color: #ccc;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.trinitron-model-text {
+  font-family: 'VT323', monospace;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 1px;
+}
+
+/* Mobile Adjustments for Trinitron Chassis */
+@media (max-width: 768px) {
+  body.trinitron-mode {
+    padding: 12px;
+  }
+
+  body.trinitron-mode #app {
+    width: 96vw;
+    height: 75vh;
+  }
+
+  body.trinitron-mode .trinitron-chassis {
+    top: -32px;
+    bottom: -38px;
+    left: -18px;
+    right: -18px;
+    border-radius: 26px;
+  }
+
+  .trinitron-sony-logo {
+    font-size: 1.3rem;
+  }
+
+  .trinitron-sub-logo {
+    font-size: 0.6rem;
+  }
+
+  .trinitron-badge,
+  .trinitron-model-text,
+  .trinitron-side-speaker {
+    display: none;
+  }
+}
