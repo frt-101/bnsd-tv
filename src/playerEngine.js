@@ -79,7 +79,18 @@ class PlayerEngine {
       fireCallback();
     }, 300);
 
+    const defaultPlayerVars = {
+      autoplay: 1,
+      controls: 0,
+      cc_load_policy: 0,
+      iv_load_policy: 3,
+      modestbranding: 1,
+      rel: 0,
+      playsinline: 1
+    };
+
     this.playerA = new window.YT.Player('player-a', {
+      playerVars: defaultPlayerVars,
       events: {
         onReady: checkReady,
         onStateChange: (e) => this.handlePlayerStateChange('A', e),
@@ -88,6 +99,7 @@ class PlayerEngine {
     });
 
     this.playerB = new window.YT.Player('player-b', {
+      playerVars: defaultPlayerVars,
       events: {
         onReady: checkReady,
         onStateChange: (e) => this.handlePlayerStateChange('B', e),
