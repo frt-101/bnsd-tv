@@ -590,3 +590,82 @@ html, body {
   background: rgba(255, 255, 255, 0.2);
   border-radius: 3px;
 }
+
+/* ==========================================================================
+   Responsive Mobile CRT & OSD Overlay Tuning
+   ========================================================================== */
+@media (max-width: 768px) {
+  .osd-container {
+    top: max(16px, env(safe-area-inset-top, 16px));
+    left: max(16px, env(safe-area-inset-left, 16px));
+  }
+
+  .osd-header {
+    font-size: 1.4rem;
+    gap: 10px;
+    letter-spacing: 1px;
+  }
+
+  .osd-badge {
+    font-size: 1rem;
+    padding: 0 6px;
+  }
+
+  .osd-container[data-osd-mode="vcr-watermark"] .osd-badge {
+    font-size: 1.2rem;
+  }
+
+  .osd-category {
+    font-size: 1.1rem;
+  }
+
+  .osd-title {
+    font-size: 1.2rem;
+    max-width: 80vw;
+  }
+
+  .modal-card {
+    width: 95%;
+    max-height: 90vh;
+    border-radius: 12px;
+  }
+
+  .modal-header {
+    padding: 16px;
+  }
+
+  .modal-body {
+    padding: 16px;
+  }
+
+  .modal-tabs {
+    padding: 0 16px;
+    overflow-x: auto;
+  }
+
+  .tab-btn {
+    white-space: nowrap;
+    padding: 10px 12px;
+    font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .osd-container {
+    top: max(12px, env(safe-area-inset-top, 12px));
+    left: max(12px, env(safe-area-inset-left, 12px));
+  }
+
+  .osd-header {
+    font-size: 1.2rem;
+    gap: 8px;
+  }
+
+  .osd-badge {
+    font-size: 0.85rem;
+  }
+
+  .osd-container[data-osd-mode="vcr-watermark"] .osd-badge {
+    font-size: 1.05rem;
+  }
+}
