@@ -1,30 +1,6 @@
 import Papa from 'papaparse';
 import { DEFAULT_90S_CATALOG } from './catalogData.js';
 
-// MyRetroTVs Obfuscation Cipher Table (32 Permutation Matrices)
-const MYRETROTV_CIPHER = [
-  [5,6,9,3,0,7,10,1,4,2,8],[9,4,6,5,8,1,10,2,0,3,7],[6,2,4,8,5,7,0,1,9,3,10],
-  [3,7,4,10,1,2,0,5,6,9,8],[4,8,2,1,9,10,6,7,0,3,5],[0,3,1,5,2,4,10,7,6,8,9],
-  [10,4,1,0,6,7,2,8,5,9,3],[6,2,10,7,0,9,5,3,1,4,8],[7,9,10,6,5,1,8,4,2,0,3],
-  [6,7,9,8,0,3,10,1,4,2,5],[10,0,1,6,7,2,5,8,4,3,9],[4,2,8,5,10,1,9,7,6,0,3],
-  [6,7,10,4,9,3,5,2,0,8,1],[9,2,5,8,4,6,1,10,3,0,7],[10,2,4,5,3,6,0,7,8,9,1],
-  [7,4,2,10,3,0,9,8,1,6,5],[8,7,9,10,5,0,3,6,4,1,2],[7,5,8,2,9,3,4,1,0,6,10],
-  [2,3,10,9,0,1,7,8,5,4,6],[10,1,0,3,9,5,6,7,4,8,2],[5,4,10,9,6,2,1,8,0,3,7],
-  [5,8,10,9,7,2,3,4,1,6,0],[10,6,7,3,0,2,1,4,5,8,9],[2,5,10,3,9,1,6,0,4,7,8],
-  [0,5,3,7,10,4,8,2,1,6,9],[2,0,8,9,4,1,6,10,5,3,7],[9,8,2,0,3,4,7,6,1,10,5],
-  [3,5,2,4,7,6,10,1,8,0,9],[0,3,6,2,1,10,8,9,7,5,4],[4,5,3,6,2,1,8,10,7,0,9],
-  [5,10,4,8,0,2,1,6,3,7,9],[1,6,10,9,2,8,5,7,4,3,0]
-];
-
-function decodeScrambledYoutubeId(rawId) {
-  if (!rawId || rawId.length < 11) return rawId;
-  const chars = rawId.substring(0, 11).split('');
-  const sum = chars.reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  const table = MYRETROTV_CIPHER[sum % MYRETROTV_CIPHER.length];
-  const unpermutated = table.map(i => chars[i]).join('');
-  return unpermutated + rawId.substring(11);
-}
-
 class CatalogManager {
   constructor() {
     this.allVideos = [];
@@ -134,10 +110,8 @@ class CatalogManager {
     this.categoriesMap.clear();
 
     dataArray.forEach((row, idx) => {
-      const rawVideoId = row.video_id ? row.video_id.trim() : null;
-      if (!rawVideoId) return;
-
-      const videoId = decodeScrambledYoutubeId(rawVideoId);
+      const videoId = row.video_id ? row.video_id.trim() : null;
+      if (!videoId) return;
 
       const item = {
         id: idx + 1,
@@ -145,7 +119,6 @@ class CatalogManager {
         year: row.year ? row.year.trim() : '1995',
         category: row.channel ? row.channel.trim() : 'Commercials',
         videoId: videoId,
-        rawVideoId: rawVideoId,
         title: row.title ? row.title.trim() : `90s Video ${idx + 1}`,
         startSec: parseInt(row.start_seconds) || 0,
         endSec: parseInt(row.end_seconds) || 0
@@ -181,11 +154,8 @@ class CatalogManager {
     this.categoriesMap.clear();
 
     parsed.data.forEach((row, idx) => {
-      const rawVideoId = row.video_id ? row.video_id.trim() : null;
-      if (!rawVideoId) return;
-
-      // Automatically decode MyRetroTVs scrambled video IDs if scrambled
-      const videoId = decodeScrambledYoutubeId(rawVideoId);
+      const videoId = row.video_id ? row.video_id.trim() : null;
+      if (!videoId) return;
 
       const category = row.channel ? row.channel.trim() : 'Other';
       const decade = row.decade ? row.decade.trim() : '1990s';
