@@ -73,6 +73,16 @@ loading — see Section 5.
 +---------------------------+
 ```
 
+**Note:** this is currently the *only* thing that stops BNSD TV from
+streaming — the app itself has no concept of open/closed hours and will
+loop the catalog forever as long as it's running. That's a non-issue if the
+schedule above fully powers the Android device off, but if FreeKiosk/the
+projector ever only blanks the screen while the device keeps running in the
+background, the app would keep streaming unseen. See
+[`BUSINESS_HOURS_SYNC.md`](./BUSINESS_HOURS_SYNC.md) for a planned (not yet
+built) fix that syncs real open/closed state from Square via REBA's
+Firestore data instead of relying solely on the power schedule.
+
 ---
 
 ## 4. Remote Admin Controls
