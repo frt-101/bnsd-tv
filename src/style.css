@@ -702,16 +702,14 @@ body.trinitron-mode #app {
 
 /* Red TV Frame Casing Body */
 body.trinitron-mode .trinitron-chassis {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   position: absolute;
-  top: -42px;
+  top: -44px;
   bottom: -24px;
   left: -40px;
   right: -40px;
   background: #b8101c;
-  border-radius: 28px;
+  border-radius: 24px;
   border: 1px solid #d61c28;
   box-shadow: 
     0 30px 80px rgba(0, 0, 0, 0.9),
@@ -719,7 +717,6 @@ body.trinitron-mode .trinitron-chassis {
     inset 0 -4px 10px rgba(0, 0, 0, 0.4);
   z-index: 1;
   pointer-events: none;
-  padding: 8px 20px;
 }
 
 /* Ensure inner CRT video screen is layered inside the chassis background */
@@ -737,31 +734,51 @@ body.trinitron-mode .osd-container {
   z-index: 35;
 }
 
-/* Top Bezel: Sony-Style Skinny Straight Serif BNSD Logo */
-.trinitron-top-bar {
+/* Iconic 80s Sony Trinitron Top-Left Bezel Brand Placement */
+.trinitron-top-left-brand {
   position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 9px;
+  left: 20px;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 28px;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
-/* Sony-Style Skinny & Tall Straight Serif Typography for BNSD */
+/* Authentic 80s Sony Clarendon Slab Serif Typography for BNSD */
 .trinitron-sony-logo {
-  font-family: 'Bodoni Moda', 'Didot', 'Times New Roman', serif;
-  font-weight: 800;
-  font-size: 1.85rem;
-  letter-spacing: 0.42em;
+  font-family: 'Superclarendon', 'Clarendon', 'Clarendon BT', 'Roboto Slab', 'Arvo', 'Zilla Slab', serif;
+  font-weight: 900;
+  font-size: 1.55rem;
+  letter-spacing: 0.12em;
   color: #ffffff;
   text-shadow: 
-    0 1px 3px rgba(0, 0, 0, 0.8),
-    0 0 1px rgba(255, 255, 255, 0.8);
+    0 1px 2px rgba(0, 0, 0, 0.9),
+    0 0 1px rgba(255, 255, 255, 0.9);
   line-height: 1;
   text-transform: uppercase;
-  padding-left: 0.42em; /* Balance letter-spacing */
+}
+
+/* Sub-Badge directly under top-left logo */
+.trinitron-sub-badge {
+  font-family: 'Outfit', -apple-system, sans-serif;
+  font-weight: 700;
+  font-size: 0.58rem;
+  letter-spacing: 0.22em;
+  color: rgba(255, 255, 255, 0.7);
+  text-transform: uppercase;
+  margin-top: 3px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* Top-Right Stereo Badge */
+.trinitron-top-right-badge {
+  position: absolute;
+  top: 13px;
+  right: 20px;
+  font-family: 'VT323', monospace;
+  font-size: 0.95rem;
+  letter-spacing: 0.15em;
+  color: rgba(255, 255, 255, 0.55);
 }
 
 /* Mobile Adjustments for Trinitron Chassis */
@@ -776,16 +793,29 @@ body.trinitron-mode .osd-container {
   }
 
   body.trinitron-mode .trinitron-chassis {
-    top: -30px;
+    top: -34px;
     bottom: -18px;
     left: -16px;
     right: -16px;
-    border-radius: 20px;
+    border-radius: 18px;
+  }
+
+  .trinitron-top-left-brand {
+    top: 7px;
+    left: 14px;
   }
 
   .trinitron-sony-logo {
-    font-size: 1.35rem;
-    letter-spacing: 0.35em;
-    padding-left: 0.35em;
+    font-size: 1.15rem;
+    letter-spacing: 0.1em;
+  }
+
+  .trinitron-sub-badge {
+    font-size: 0.5rem;
+    letter-spacing: 0.15em;
+  }
+
+  .trinitron-top-right-badge {
+    display: none;
   }
 }
