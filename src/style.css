@@ -744,30 +744,31 @@ body.trinitron-mode .osd-container {
   align-items: flex-start;
 }
 
-/* Authentic 80s Sony Clarendon Slab Serif Typography for BNSD */
+/* BNSD Logo with Besley Bold Typography */
 .trinitron-sony-logo {
-  font-family: 'Superclarendon', 'Clarendon', 'Clarendon BT', 'Roboto Slab', 'Arvo', 'Zilla Slab', serif;
-  font-weight: 900;
-  font-size: 1.55rem;
-  letter-spacing: 0.12em;
+  font-family: 'Besley', 'Superclarendon', 'Clarendon', serif;
+  font-weight: 700;
+  font-size: 1.65rem;
+  letter-spacing: 0.08em;
   color: #ffffff;
   text-shadow: 
-    0 1px 2px rgba(0, 0, 0, 0.9),
+    0 1px 3px rgba(0, 0, 0, 0.9),
     0 0 1px rgba(255, 255, 255, 0.9);
   line-height: 1;
   text-transform: uppercase;
 }
 
-/* Sub-Badge directly under top-left logo */
+/* Sub-Badge directly under top-left logo (High Visibility) */
 .trinitron-sub-badge {
   font-family: 'Outfit', -apple-system, sans-serif;
   font-weight: 700;
-  font-size: 0.58rem;
-  letter-spacing: 0.22em;
-  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.72rem;
+  letter-spacing: 0.28em;
+  color: #ffffff;
+  opacity: 0.95;
   text-transform: uppercase;
-  margin-top: 3px;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  margin-top: 4px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.9);
 }
 
 /* Top-Right Stereo Badge */
