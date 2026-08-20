@@ -44,11 +44,24 @@ class PlayerEngine {
   }
 
   /**
-   * Initialize YouTube iFrame API
+   * Initialize YouTube iFrame API with queue and start index
    */
-  init(onReadyCallback) {
+  init(queueOrCb, startIndexOrCb, onReadyCallback) {
+    let cb = onReadyCallback;
+    if (typeof queueOrCb === 'function') {
+      cb = queueOrCb;
+    } else if (Array.isArray(queueOrCb)) {
+      this.queue = queueOrCb;
+      this.currentIndex = typeof startIndexOrCb === 'number' ? startIndexOrCb : 0;
+      if (this.queue.length > 0) {
+        this.currentIndex = this.findNextLiveIndex(this.currentIndex);
+        this.currentVideoItem = this.queue[this.currentIndex];
+        this.cuedItems['A'] = this.currentVideoItem;
+      }
+    }
+
     if (window.YT && window.YT.Player) {
-      this.createPlayers(onReadyCallback);
+      this.createPlayers(cb);
       return;
     }
 
@@ -59,7 +72,7 @@ class PlayerEngine {
     firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
     window.onYouTubeIframeAPIReady = () => {
-      this.createPlayers(onReadyCallback);
+      this.createPlayers(cb);
     };
   }
 
@@ -82,10 +95,10 @@ class PlayerEngine {
       }
     };
 
-    // Guarantee stream starts within 300ms fallback
+    // Guarantee stream starts within 400ms fallback
     setTimeout(() => {
       fireCallback();
-    }, 300);
+    }, 400);
 
     const defaultPlayerVars = {
       autoplay: 1,
@@ -97,19 +110,70 @@ class PlayerEngine {
       playsinline: 1
     };
 
+    let videoIdA = undefined;
+    let startSecA = 0;
+    let videoIdB = undefined;
+    let startSecB = 0;
+
+    if (this.queue && this.queue.length > 0) {
+      this.currentIndex = this.findNextLiveIndex(this.currentIndex);
+      this.currentVideoItem = this.queue[this.currentIndex];
+      this.cuedItems['A'] = this.currentVideoItem;
+      if (this.currentVideoItem) {
+        videoIdA = this.currentVideoItem.videoId;
+        const clipA = this.calculateSmartClip(this.currentVideoItem);
+        startSecA = clipA.startSec;
+        this.activeCutoffSec = clipA.maxDurationSec;
+      }
+
+      const nextIndex = this.findNextLiveIndex((this.currentIndex + 1) % this.queue.length);
+      const nextItem = this.queue[nextIndex];
+      this.cuedItems['B'] = nextItem;
+      if (nextItem) {
+        videoIdB = nextItem.videoId;
+        const clipB = this.calculateSmartClip(nextItem);
+        startSecB = clipB.startSec;
+      }
+    }
+
     this.playerA = new window.YT.Player('player-a', {
-      playerVars: defaultPlayerVars,
+      width: '100%',
+      height: '100%',
+      videoId: videoIdA,
+      playerVars: {
+        ...defaultPlayerVars,
+        start: startSecA
+      },
       events: {
-        onReady: checkReady,
+        onReady: (e) => {
+          try {
+            e.target.mute();
+            if (this.activePlayerId === 'A') {
+              e.target.playVideo();
+            }
+          } catch (err) {}
+          checkReady();
+        },
         onStateChange: (e) => this.handlePlayerStateChange('A', e),
         onError: (e) => this.handlePlayerError('A', e)
       }
     });
 
     this.playerB = new window.YT.Player('player-b', {
-      playerVars: defaultPlayerVars,
+      width: '100%',
+      height: '100%',
+      videoId: videoIdB,
+      playerVars: {
+        ...defaultPlayerVars,
+        start: startSecB
+      },
       events: {
-        onReady: checkReady,
+        onReady: (e) => {
+          try {
+            e.target.mute();
+          } catch (err) {}
+          checkReady();
+        },
         onStateChange: (e) => this.handlePlayerStateChange('B', e),
         onError: (e) => this.handlePlayerError('B', e)
       }

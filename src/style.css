@@ -93,11 +93,15 @@ html, body {
   z-index: 5;
 }
 
-.player-iframe-container iframe {
+.player-iframe-container iframe,
+.player-iframe-container div {
   width: 100%;
   height: 100%;
   border: none;
   pointer-events: none;
+}
+
+.player-iframe-container iframe {
   transform: scale(1.18);
   transform-origin: center center;
 }

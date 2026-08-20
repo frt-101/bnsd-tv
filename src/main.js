@@ -80,8 +80,8 @@ async function bootstrapApp() {
   const countEl = document.getElementById('tel-queue-count');
   if (countEl) countEl.textContent = `${queue.length.toLocaleString()} videos`;
 
-  playerEngine.init(() => {
-    const randomStartIndex = queue.length > 0 ? Math.floor(Math.random() * queue.length) : 0;
+  const randomStartIndex = queue.length > 0 ? Math.floor(Math.random() * queue.length) : 0;
+  playerEngine.init(queue, randomStartIndex, () => {
     playerEngine.startStream(queue, randomStartIndex);
     startWatchdog();
   });
