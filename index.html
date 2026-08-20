@@ -39,10 +39,10 @@
       <!-- Dual iFrame Double-Buffered Player -->
       <div id="player-wrapper">
         <div id="iframe-a-container" class="player-iframe-container active-player">
-          <iframe id="player-a" src="https://www.youtube.com/embed/Aw0Bywq1wf0?enablejsapi=1&autoplay=1&mute=1&controls=0&playsinline=1&cc_load_policy=0&iv_load_policy=3&modestbranding=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture" frameborder="0" style="width:100%; height:100%; border:none;"></iframe>
+          <iframe id="player-a" src="about:blank" allow="autoplay; encrypted-media; picture-in-picture" frameborder="0" style="width:100%; height:100%; border:none;"></iframe>
         </div>
         <div id="iframe-b-container" class="player-iframe-container inactive-player">
-          <iframe id="player-b" src="https://www.youtube.com/embed/ZiPgbBSwhi0?enablejsapi=1&autoplay=1&mute=1&controls=0&playsinline=1&cc_load_policy=0&iv_load_policy=3&modestbranding=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture" frameborder="0" style="width:100%; height:100%; border:none;"></iframe>
+          <iframe id="player-b" src="about:blank" allow="autoplay; encrypted-media; picture-in-picture" frameborder="0" style="width:100%; height:100%; border:none;"></iframe>
         </div>
       </div>
 
@@ -59,8 +59,7 @@
         <span class="osd-badge" id="osd-era-badge">1990s</span>
       </div>
       <div class="osd-body">
-        <div class="osd-category" id="osd-category-label">COMMERCIALS</div>
-        <div class="osd-title" id="osd-title-label">Loading Video Catalog...</div>
+        <div class="osd-category" id="osd-category-label">RETRO TV</div>
       </div>
     </div>
 
@@ -74,7 +73,7 @@
         
         <div class="modal-tabs">
           <button class="tab-btn active" data-tab="tab-channels">Projector Channels</button>
-          <button class="tab-btn" data-tab="tab-categories">Categories Filter</button>
+          <button class="tab-btn" data-tab="tab-categories">Decades & Categories</button>
           <button class="tab-btn" data-tab="tab-pacing">Pacing & Clip Rules</button>
           <button class="tab-btn" data-tab="tab-vibe">Projection & CRT Vibe</button>
           <button class="tab-btn" data-tab="tab-catalog">Catalog & CSV</button>
@@ -116,12 +115,33 @@
             </div>
           </div>
 
-          <!-- TAB 2: Categories Filter -->
+          <!-- TAB 2: Decades & Categories Filter -->
           <div id="tab-categories" class="tab-content">
-            <p class="section-desc">Toggle which content categories are allowed to stream on this projector. Uncheck any category that is lame, silly, or not a good fit.</p>
+            <!-- Section 1: Decades Filter -->
+            <div class="filter-section-header">
+              <h3>Retro Decades & Eras</h3>
+              <p class="section-desc">Select which nostalgic decades to include in the stream. You can choose all decades or lock to a specific era (e.g. 80s music, 90s cartoons, etc.).</p>
+            </div>
             
-            <div class="category-toolbar">
-              <button id="btn-select-all-cats" class="btn-sm">Select All</button>
+            <div class="filter-toolbar">
+              <button id="btn-decades-all" class="btn-sm">All Eras</button>
+              <button id="btn-decades-80s" class="btn-sm">80s Only</button>
+              <button id="btn-decades-90s" class="btn-sm">90s Only</button>
+              <button id="btn-decades-00s" class="btn-sm">2000s Only</button>
+            </div>
+
+            <div id="decades-grid" class="decades-grid" style="margin-bottom: 24px;">
+              <!-- Dynamically populated -->
+            </div>
+
+            <!-- Section 2: Categories Filter -->
+            <div class="filter-section-header">
+              <h3>Content Categories</h3>
+              <p class="section-desc">Toggle specific cultural categories on or off. News and politics are automatically excluded from the database.</p>
+            </div>
+            
+            <div class="filter-toolbar">
+              <button id="btn-select-all-cats" class="btn-sm">Select All Categories</button>
               <button id="btn-deselect-all-cats" class="btn-sm">Deselect All</button>
             </div>
 
@@ -132,25 +152,46 @@
 
           <!-- TAB 3: Pacing & Clip Rules -->
           <div id="tab-pacing" class="tab-content">
-            <p class="section-desc">Configure pacing so videos stay lively and active like someone is channel surfing. Commercials can play in full, while longer shows/music switch automatically to prevent monotony.</p>
+            <p class="section-desc">Configure visual pacing tailored for silent projection. Videos stay lively and active with smart seek jumps that skip slow MTV title cards and spoken intros, dropping right into the visual action.</p>
 
             <div class="form-group">
-              <label for="input-commercial-max">Commercials Max Duration (seconds):</label>
-              <input type="number" id="input-commercial-max" class="form-control" value="45" min="10" max="180">
-              <p class="field-help">Commercials are usually 20-30 seconds. Plays in full unless exceeding this limit.</p>
+              <label for="select-pacing-mode">Visual Pacing & Rhythm Mode:</label>
+              <select id="select-pacing-mode" class="form-control">
+                <option value="channel-surfer">⚡ Fast Channel Surfer (15–35s • Punchy visual hooks, energetic TV surfing)</option>
+                <option value="balanced">🍸 Ambient Lounge (25–50s • Steady visual groove, great for background art)</option>
+                <option value="deep-cuts">📼 Deep Cuts (40–75s • Extended music videos & cartoon scenes)</option>
+              </select>
+              <p class="field-help">Adjusts playback attention span and rhythm across all categories.</p>
             </div>
 
             <div class="form-group">
-              <label for="input-general-clip-max">General Content Clip Limit (seconds):</label>
-              <input type="number" id="input-general-clip-max" class="form-control" value="90" min="15" max="600">
-              <p class="field-help">Music, Movies, Cartoons, Sports will automatically switch after this duration to maintain visual momentum.</p>
+              <label class="checkbox-label">
+                <input type="checkbox" id="chk-zap-bursts" checked>
+                <span>Enable Channel Surfing Zap Bursts (Simulates rapid 2–3 channel flips every 5–8 clips)</span>
+              </label>
+              <p class="field-help">Periodically flicks through 2–3 channels in quick 6–10s glimpses with static glitch before settling on a segment.</p>
             </div>
 
             <div class="form-group">
               <label class="checkbox-label">
                 <input type="checkbox" id="chk-random-offset" checked>
-                <span>Enable Random Highlights Jump (Start videos at 15-40% offset for non-commercials)</span>
+                <span>Enable Smart Visual Seek Offsets (Skip MTV credits, title cards & spoken intros)</span>
               </label>
+              <p class="field-help">Jumps music videos 30–90s in to hit dance choreography/chorus, cartoons into slapstick action, and sports into highlights.</p>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid rgba(255, 255, 255, 0.08); margin: 20px 0;">
+
+            <div class="form-group">
+              <label for="input-commercial-max">Commercials Max Cap (seconds):</label>
+              <input type="number" id="input-commercial-max" class="form-control" value="30" min="10" max="180">
+              <p class="field-help">Commercials are kept short and punchy (15–25s) with neon retro toys, cereal, and snacks.</p>
+            </div>
+
+            <div class="form-group">
+              <label for="input-general-clip-max">General Content Max Cap (seconds):</label>
+              <input type="number" id="input-general-clip-max" class="form-control" value="60" min="15" max="600">
+              <p class="field-help">Hard upper limit for non-commercial categories to maintain visual momentum.</p>
             </div>
           </div>
 
@@ -222,7 +263,7 @@
           <div id="tab-catalog" class="tab-content">
             <div class="catalog-info-card">
               <h3>Active Catalog Dataset</h3>
-              <p>Loaded File: <strong>90s_playlist.csv</strong></p>
+              <p>Loaded File: <strong>BNSD TV PLAYLIST (bnsd_tv_playlist.csv)</strong></p>
               <p>Total Indexed Videos: <strong id="cat-total-count">0</strong></p>
               <p>Flagged Dead Videos (Quarantined): <strong id="cat-dead-count" style="color: #ff5555;">0</strong></p>
             </div>

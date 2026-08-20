@@ -22,16 +22,24 @@ class PlayerEngine {
     // of which player (active or preloading) reported the error.
     this.cuedItems = { A: null, B: null };
 
-    // Config Rules
-    this.commercialMaxSec = 45;
-    this.generalClipMaxSec = 90;
+    // Config Rules & Pacing Modes
+    this.pacingMode = 'channel-surfer'; // 'channel-surfer' | 'balanced' | 'deep-cuts'
+    this.commercialMaxSec = 30;
+    this.generalClipMaxSec = 60;
     this.randomOffsetEnabled = true;
+    this.zapBurstEnabled = true;
+
+    // Surfing Zap Burst Engine (simulates quick remote clicks)
+    this.zapBurstRemaining = 0;
+    this.clipsSinceLastBurst = 0;
+    this.burstInterval = Math.floor(Math.random() * 3) + 5; // next burst in 5 to 7 clips
 
     // State Tracking
     this.currentVideoItem = null;
     this.clipTimer = null;
     this.elapsedSeconds = 0;
-    this.activeCutoffSec = 90;
+    this.activeCutoffSec = 30;
+    this.isZapClip = false;
     this.onProgressCallback = null;
   }
 
@@ -251,40 +259,148 @@ class PlayerEngine {
   }
 
   /**
-   * Calculate smart clip duration and start offset based on category
+   * Calculate smart clip duration and start offset based on category and visual pacing mode.
+   * Tailored specifically for silent visual projection (jumps past slow title cards & spoken intros).
    */
   calculateSmartClip(videoItem) {
-    if (!videoItem) return { startSec: 0, maxDurationSec: 90 };
+    if (!videoItem) return { startSec: 0, maxDurationSec: 30 };
 
-    const isCommercial = (videoItem.category || '').toLowerCase() === 'commercials';
-    let baseMaxDurationSec = isCommercial ? this.commercialMaxSec : this.generalClipMaxSec;
+    const cat = (videoItem.category || '').toLowerCase();
     let startSec = videoItem.startSec || 0;
+    let maxDurationSec = 30;
 
-    // Organic clip duration variance (+/- 15s) for dynamic TV pacing
-    let maxDurationSec = baseMaxDurationSec;
-    if (!isCommercial) {
-      const variance = Math.floor(Math.random() * 30) - 15;
-      maxDurationSec = Math.max(25, baseMaxDurationSec + variance);
+    // 1. Check if currently in a rapid "Zap Burst" (simulates fast channel surfing)
+    if (this.zapBurstEnabled && this.zapBurstRemaining > 0) {
+      this.isZapClip = true;
+      this.zapBurstRemaining--;
+      // Zap clips are ultra-punchy: 6 to 10 seconds
+      maxDurationSec = Math.floor(Math.random() * 5) + 6;
+      if (this.randomOffsetEnabled && startSec === 0) {
+        startSec = this.getSmartVisualSeekOffset(cat);
+      }
+      return { startSec, maxDurationSec };
     }
 
-    // Random highlights jump for non-commercials (start between 15s and 120s)
-    if (!isCommercial && this.randomOffsetEnabled && startSec === 0) {
-      startSec = Math.floor(Math.random() * 105) + 15;
+    this.isZapClip = false;
+
+    // 2. Schedule next Zap Burst interval
+    if (this.zapBurstEnabled) {
+      this.clipsSinceLastBurst++;
+      if (this.clipsSinceLastBurst >= this.burstInterval) {
+        this.clipsSinceLastBurst = 0;
+        this.burstInterval = Math.floor(Math.random() * 4) + 5; // next burst in 5 to 8 clips
+        this.zapBurstRemaining = Math.floor(Math.random() * 2) + 2; // 2 to 3 rapid zap clips
+      }
+    }
+
+    // 3. Category-specific durations and smart visual seek offsets
+    const mode = this.pacingMode || 'channel-surfer';
+
+    if (cat === 'commercials') {
+      // Commercials: 15-25s in surfer, 20-30s in balanced, 30-45s in deep-cuts
+      if (mode === 'channel-surfer') maxDurationSec = Math.floor(Math.random() * 11) + 15;
+      else if (mode === 'balanced') maxDurationSec = Math.floor(Math.random() * 11) + 20;
+      else maxDurationSec = Math.floor(Math.random() * 16) + 30;
+
+      // Commercials start at 0s for immediate visual hook
+      if (startSec === 0) startSec = 0;
+    } else if (cat === 'music') {
+      // Music: Needs time for beat, choreography, and visual concept
+      if (mode === 'channel-surfer') maxDurationSec = Math.floor(Math.random() * 16) + 28; // 28-43s
+      else if (mode === 'balanced') maxDurationSec = Math.floor(Math.random() * 21) + 38; // 38-58s
+      else maxDurationSec = Math.floor(Math.random() * 26) + 50; // 50-75s
+
+      // MUSIC VISUAL SEEK: Jump 30s to 90s to bypass MTV title cards and spoken intros
+      if (this.randomOffsetEnabled && startSec === 0) {
+        startSec = Math.floor(Math.random() * 61) + 30; // 30s to 90s
+      }
+    } else if (cat === 'cartoons' || cat === 'kids') {
+      // Cartoons / Kids: High visual kinetic energy
+      if (mode === 'channel-surfer') maxDurationSec = Math.floor(Math.random() * 16) + 20; // 20-35s
+      else if (mode === 'balanced') maxDurationSec = Math.floor(Math.random() * 21) + 30; // 30-50s
+      else maxDurationSec = Math.floor(Math.random() * 26) + 45; // 45-70s
+
+      // CARTOON VISUAL SEEK: 25% chance theme song (0s), 75% chance jump 45s-200s into slapstick
+      if (this.randomOffsetEnabled && startSec === 0) {
+        if (Math.random() < 0.25) {
+          startSec = 0;
+        } else {
+          startSec = Math.floor(Math.random() * 156) + 45; // 45s to 200s
+        }
+      }
+    } else if (cat === 'trailers') {
+      // Trailers: Fast cuts, high visual drama
+      if (mode === 'channel-surfer') maxDurationSec = Math.floor(Math.random() * 16) + 18; // 18-33s
+      else if (mode === 'balanced') maxDurationSec = Math.floor(Math.random() * 16) + 25; // 25-40s
+      else maxDurationSec = Math.floor(Math.random() * 21) + 35; // 35-55s
+
+      // Start at 0s-4s to catch title cards / opening VO
+      if (startSec === 0) startSec = Math.floor(Math.random() * 4);
+    } else if (cat === 'sports') {
+      // Sports / Action: Dunks, wrestling slams, extreme sports
+      if (mode === 'channel-surfer') maxDurationSec = Math.floor(Math.random() * 16) + 16; // 16-31s
+      else if (mode === 'balanced') maxDurationSec = Math.floor(Math.random() * 16) + 24; // 24-39s
+      else maxDurationSec = Math.floor(Math.random() * 21) + 35; // 35-55s
+
+      // Jump straight into action highlight (60s to 300s)
+      if (this.randomOffsetEnabled && startSec === 0) {
+        startSec = Math.floor(Math.random() * 241) + 60;
+      }
+    } else if (cat === 'gameshows' || cat === 'talkshows' || cat === 'soaps') {
+      // In silent projection, keep talking heads short & punchy
+      if (mode === 'channel-surfer') maxDurationSec = Math.floor(Math.random() * 9) + 12; // 12-20s
+      else if (mode === 'balanced') maxDurationSec = Math.floor(Math.random() * 11) + 18; // 18-28s
+      else maxDurationSec = Math.floor(Math.random() * 16) + 25; // 25-40s
+
+      if (this.randomOffsetEnabled && startSec === 0) {
+        startSec = Math.floor(Math.random() * 151) + 45; // 45s to 195s
+      }
+    } else {
+      // Comedy, Movies, Drama, Specials, Other
+      if (mode === 'channel-surfer') maxDurationSec = Math.floor(Math.random() * 16) + 20; // 20-35s
+      else if (mode === 'balanced') maxDurationSec = Math.floor(Math.random() * 16) + 28; // 28-43s
+      else maxDurationSec = Math.floor(Math.random() * 21) + 40; // 40-60s
+
+      if (this.randomOffsetEnabled && startSec === 0) {
+        startSec = Math.floor(Math.random() * 181) + 60; // 60s to 240s
+      }
+    }
+
+    // Apply manual user caps if set in admin
+    if (this.generalClipMaxSec && cat !== 'commercials') {
+      maxDurationSec = Math.min(maxDurationSec, this.generalClipMaxSec);
+    }
+    if (this.commercialMaxSec && cat === 'commercials') {
+      maxDurationSec = Math.min(maxDurationSec, this.commercialMaxSec);
     }
 
     return { startSec, maxDurationSec };
   }
 
   /**
-   * Advance to next video in queue with CRT channel static glitch
+   * Helper for instant visual action seek offset
+   */
+  getSmartVisualSeekOffset(cat) {
+    if (cat === 'commercials' || cat === 'trailers') return 0;
+    if (cat === 'music') return Math.floor(Math.random() * 61) + 30; // 30-90s
+    if (cat === 'cartoons' || cat === 'kids') return Math.floor(Math.random() * 156) + 45; // 45-200s
+    if (cat === 'sports') return Math.floor(Math.random() * 241) + 60; // 60-300s
+    return Math.floor(Math.random() * 181) + 60; // 60-240s
+  }
+
+  /**
+   * Advance to next video in queue with CRT channel static glitch.
+   * Automatically uses faster static burst for rapid zap clips.
    */
   nextVideo() {
     if (!this.queue || this.queue.length === 0) return;
 
     this.clearClipTimer();
 
-    // Trigger CRT Static Transition
-    effectsEngine.triggerChannelSwitch(250, () => {
+    // Fast 160ms static during rapid zap bursts vs 250ms normal static
+    const staticDuration = this.zapBurstRemaining > 0 || this.isZapClip ? 160 : 250;
+
+    effectsEngine.triggerChannelSwitch(staticDuration, () => {
       // Swap active player container focus
       this.toggleActivePlayerFocus();
 
@@ -417,9 +533,6 @@ class PlayerEngine {
   /**
    * Update OSD HUD Labels
    */
-  /**
-   * Update OSD HUD Labels
-   */
   updateOSD(videoItem) {
     const hud = document.getElementById('osd-hud');
     if (!hud) return;
@@ -436,7 +549,6 @@ class PlayerEngine {
     hud.classList.remove('hidden');
 
     const catLabel = document.getElementById('osd-category-label');
-    const titleLabel = document.getElementById('osd-title-label');
     const eraLabel = document.getElementById('osd-era-badge');
     const channelLabel = document.getElementById('osd-channel-label');
 
@@ -444,20 +556,24 @@ class PlayerEngine {
 
     if (osdMode === 'vcr-watermark') {
       if (channelLabel) channelLabel.textContent = 'BNSD TV';
-      if (eraLabel) eraLabel.textContent = 'PLAY ►';
+      if (eraLabel) eraLabel.textContent = this.isZapClip ? '⚡ ZAP ►' : 'PLAY ►';
     } else {
       if (channelLabel) channelLabel.textContent = `CH ${chNum} • BNSD TV`;
-      if (eraLabel) eraLabel.textContent = videoItem?.decade || '1990s';
+      if (eraLabel) eraLabel.textContent = this.isZapClip ? `⚡ ${videoItem?.decade || '1990s'}` : (videoItem?.decade || '1990s');
     }
 
-    if (catLabel) catLabel.textContent = (videoItem?.category || 'VINTAGE STREAM').toUpperCase();
-    if (titleLabel) titleLabel.textContent = videoItem?.title || 'BNSD TV Stream';
+    if (catLabel) {
+      const catText = (videoItem?.category || 'RETRO TV').toUpperCase();
+      catLabel.textContent = this.isZapClip ? `⚡ ${catText}` : catText;
+    }
   }
 
-  updatePacingRules(commercialMax, generalMax, randomOffset) {
+  updatePacingRules(commercialMax, generalMax, randomOffset, pacingMode = 'channel-surfer', zapBurstEnabled = true) {
     this.commercialMaxSec = commercialMax;
     this.generalClipMaxSec = generalMax;
     this.randomOffsetEnabled = randomOffset;
+    this.pacingMode = pacingMode;
+    this.zapBurstEnabled = zapBurstEnabled;
   }
 }
 

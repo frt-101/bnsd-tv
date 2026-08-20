@@ -459,11 +459,27 @@ html, body {
   cursor: pointer;
 }
 
-/* Category Matrix Grid */
-.category-toolbar {
+/* Decades & Category Matrix Grids */
+.filter-section-header {
+  margin-bottom: 12px;
+}
+
+.filter-section-header h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 4px;
+}
+
+.filter-section-header .section-desc {
+  margin-bottom: 12px;
+}
+
+.filter-toolbar {
   display: flex;
-  gap: 10px;
-  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
 }
 
 .btn-sm {
@@ -473,11 +489,76 @@ html, body {
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 0.85rem;
+  font-weight: 500;
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .btn-sm:hover {
   background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.decades-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.decade-card {
+  background: var(--card-bg);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 14px 16px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.1s ease;
+}
+
+.decade-card:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.decade-card.active {
+  border-color: var(--accent-color);
+  background: rgba(0, 255, 170, 0.1);
+  box-shadow: 0 0 15px rgba(0, 255, 170, 0.15);
+}
+
+.decade-card input {
+  accent-color: var(--accent-color);
+  width: 18px;
+  height: 18px;
+}
+
+.decade-label-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.decade-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+
+.decade-years {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.decade-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent-color);
+  margin-left: auto;
+  background: rgba(0, 255, 170, 0.12);
+  padding: 3px 8px;
+  border-radius: 12px;
 }
 
 .categories-grid {
@@ -510,6 +591,8 @@ html, body {
 
 .cat-card input {
   accent-color: var(--accent-color);
+  width: 16px;
+  height: 16px;
 }
 
 .cat-name {

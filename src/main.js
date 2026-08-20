@@ -38,10 +38,10 @@ async function bootstrapApp() {
     osdChannel.textContent = `CH ${adminController.getChannelNum(channelParam)} • BNSD TV`;
   }
 
-  // 3. Load CSV Catalog (90s_playlist.csv)
-  const isLoaded = await catalogManager.loadCSV('/90s_playlist.csv');
+  // 3. Load CSV Catalog (bnsd_tv_playlist.csv)
+  const isLoaded = await catalogManager.loadCSV('/bnsd_tv_playlist.csv');
   if (!isLoaded) {
-    console.error("Failed to load 90s_playlist.csv catalog.");
+    console.error("Failed to load bnsd_tv_playlist.csv catalog.");
     return;
   }
 
@@ -56,24 +56,29 @@ async function bootstrapApp() {
   // 5. Subscribe to Firestore / LocalStorage real-time channel updates
   subscribeChannelConfig(channelParam, (remoteConfig) => {
     if (remoteConfig) {
+      if (remoteConfig.enabledDecades) adminController.enabledDecades = remoteConfig.enabledDecades;
       if (remoteConfig.enabledCategories) adminController.enabledCategories = remoteConfig.enabledCategories;
       if (remoteConfig.commercialMaxSec) adminController.commercialMaxSec = remoteConfig.commercialMaxSec;
       if (remoteConfig.generalClipMaxSec) adminController.generalClipMaxSec = remoteConfig.generalClipMaxSec;
       if (remoteConfig.randomOffsetEnabled !== undefined) adminController.randomOffsetEnabled = remoteConfig.randomOffsetEnabled;
+      if (remoteConfig.pacingMode) adminController.pacingMode = remoteConfig.pacingMode;
+      if (remoteConfig.zapBurstEnabled !== undefined) adminController.zapBurstEnabled = remoteConfig.zapBurstEnabled;
       
       playerEngine.updatePacingRules(
         adminController.commercialMaxSec,
         adminController.generalClipMaxSec,
-        adminController.randomOffsetEnabled
+        adminController.randomOffsetEnabled,
+        adminController.pacingMode,
+        adminController.zapBurstEnabled
       );
     }
   });
 
   // 6. Initialize YouTube Player Engine and Start Stream once players are ready
-  const queue = catalogManager.generateChannelQueue(channelParam, adminController.enabledCategories);
+  const queue = catalogManager.generateChannelQueue(channelParam, adminController.enabledCategories, adminController.enabledDecades);
 
   const countEl = document.getElementById('tel-queue-count');
-  if (countEl) countEl.textContent = `${queue.length} videos`;
+  if (countEl) countEl.textContent = `${queue.length.toLocaleString()} videos`;
 
   playerEngine.init(() => {
     const randomStartIndex = queue.length > 0 ? Math.floor(Math.random() * queue.length) : 0;

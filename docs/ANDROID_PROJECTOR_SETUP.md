@@ -131,12 +131,12 @@ instead of being permanently blacklisted.
 
 ## 7. Updating the Curated Video Catalog
 
-The catalog is a single source of truth: **`90s_playlist.csv`** at the repo
+The catalog is a single source of truth: **`bnsd_tv_playlist.csv`** (BNSD TV PLAYLIST) at the repo
 root. To change what plays:
-1. Edit `90s_playlist.csv` (columns: `decade,year,channel,video_id,title,start_seconds,end_seconds`).
+1. Edit `bnsd_tv_playlist.csv` (columns: `decade,year,channel,video_id,title,start_seconds,end_seconds`).
 2. Run `npm run build-catalog` — this regenerates `src/catalogData.js` (the
-   bundled catalog the app actually loads) and syncs `public/90s_playlist.csv`.
+   bundled catalog the app actually loads) and syncs `public/bnsd_tv_playlist.csv`.
 3. Commit both the CSV and the regenerated files together, then redeploy.
 
-Don't hand-edit `src/catalogData.js` or `public/90s_playlist.csv` directly —
+Don't hand-edit `src/catalogData.js` or `public/bnsd_tv_playlist.csv` directly —
 they're generated output and will be overwritten next time the script runs.
