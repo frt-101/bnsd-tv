@@ -148,6 +148,7 @@ class PlayerEngine {
         onReady: (e) => {
           try {
             e.target.mute();
+            this.disableCaptions(e.target);
             if (this.activePlayerId === 'A') {
               e.target.playVideo();
             }
@@ -171,6 +172,7 @@ class PlayerEngine {
         onReady: (e) => {
           try {
             e.target.mute();
+            this.disableCaptions(e.target);
           } catch (err) {}
           checkReady();
         },
@@ -178,6 +180,29 @@ class PlayerEngine {
         onError: (e) => this.handlePlayerError('B', e)
       }
     });
+  }
+
+  /**
+   * Forcefully disable and unload YouTube closed captions / subtitle overlay
+   */
+  disableCaptions(player) {
+    if (!player) return;
+    try {
+      if (typeof player.unloadModule === 'function') {
+        player.unloadModule('captions');
+        player.unloadModule('cc');
+      }
+      if (typeof player.setOption === 'function') {
+        player.setOption('captions', 'track', {});
+        player.setOption('cc', 'track', {});
+        player.setOption('captions', 'fontSize', -3);
+        player.setOption('captions', 'displaySettings', {
+          backgroundOpacity: 0,
+          textOpacity: 0,
+          windowOpacity: 0
+        });
+      }
+    } catch (e) {}
   }
 
   /**
@@ -220,6 +245,7 @@ class PlayerEngine {
       try {
         activePlayer.loadVideoById(this.currentVideoItem.videoId, startSec);
         activePlayer.mute();
+        this.disableCaptions(activePlayer);
         this.scheduleAutoplayFallback(activePlayer, this.currentVideoItem.videoId);
       } catch (e) {
         console.warn("loadVideoById fallback:", e);
@@ -228,17 +254,14 @@ class PlayerEngine {
       const activeId = this.activePlayerId === 'A' ? 'player-a' : 'player-b';
       const iframe = document.getElementById(activeId);
       if (iframe) {
-        iframe.src = `https://www.youtube.com/embed/${this.currentVideoItem.videoId}?enablejsapi=1&autoplay=1&mute=1&controls=0&playsinline=1&cc_load_policy=0&iv_load_policy=3&modestbranding=1&rel=0&start=${startSec}`;
+        iframe.src = `https://www.youtube.com/embed/${this.currentVideoItem.videoId}?enablejsapi=1&autoplay=1&mute=1&controls=0&playsinline=1&cc_load_policy=0&cc_lang_pref=none&iv_load_policy=3&modestbranding=1&rel=0&start=${startSec}`;
       }
     }
 
-    // Force unload Closed Captions module if available
-    try {
-      if (activePlayer && typeof activePlayer.unloadModule === 'function') {
-        activePlayer.unloadModule('captions');
-        activePlayer.unloadModule('cc');
-      }
-    } catch (e) {}
+    // Force disable CC again with timer delays to catch async subtitle loading
+    this.disableCaptions(activePlayer);
+    setTimeout(() => this.disableCaptions(activePlayer), 300);
+    setTimeout(() => this.disableCaptions(activePlayer), 1000);
 
     // Update OSD green HUD display
     this.updateOSD(this.currentVideoItem);
@@ -503,6 +526,16 @@ class PlayerEngine {
   }
 
   handlePlayerStateChange(playerId, event) {
+    const player = playerId === 'A' ? this.playerA : this.playerB;
+
+    // Immediately disable captions whenever a video transitions to CUED (5), PLAYING (1), or BUFFERING (3)
+    if (event.data === 1 || event.data === 3 || event.data === 5) {
+      this.disableCaptions(player);
+      setTimeout(() => this.disableCaptions(player), 200);
+      setTimeout(() => this.disableCaptions(player), 600);
+      setTimeout(() => this.disableCaptions(player), 1500);
+    }
+
     // YT.PlayerState.ENDED = 0
     if (event.data === 0 && playerId === this.activePlayerId) {
       this.nextVideo();
@@ -554,6 +587,11 @@ class PlayerEngine {
 
     this.clipTimer = setInterval(() => {
       this.elapsedSeconds++;
+
+      // Continue suppressing any delayed caption tracks during the first few seconds
+      if (this.elapsedSeconds <= 4) {
+        this.disableCaptions(this.getActivePlayer());
+      }
 
       if (this.onProgressCallback) {
         this.onProgressCallback({
