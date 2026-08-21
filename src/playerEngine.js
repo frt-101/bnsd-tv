@@ -224,8 +224,8 @@ class PlayerEngine {
     // Update OSD green HUD display
     this.updateOSD(this.currentVideoItem);
 
-    // If initial clip is short (<= 5s), preload next video immediately
-    if (this.activeCutoffSec <= 5) {
+    // If initial clip is short (<= 10s), preload next video immediately
+    if (this.activeCutoffSec <= 10) {
       this.hasPreloadedForCurrentClip = true;
       this.preloadNext();
     }
@@ -248,6 +248,7 @@ class PlayerEngine {
     if (!nextItem) return;
 
     this.cuedItems[inactivePlayerId] = nextItem;
+    this.preloadedAt = Date.now();
     const nextClip = this.calculateSmartClip(nextItem);
 
     if (inactivePlayer && typeof inactivePlayer.loadVideoById === 'function') {
@@ -585,9 +586,9 @@ class PlayerEngine {
         }
       } catch (e) {}
 
-      // JIT background pre-loading: start background player 4s before channel switch
-      // so it loads and rolls in the dark without eating the beginning of the upcoming video!
-      const leadTime = 4;
+      // JIT background pre-loading: start background player 6s before channel switch
+      // so YouTube's 5.0-second startup bezel expires 100% in the dark!
+      const leadTime = 6;
       if (this.elapsedSeconds >= Math.max(1, this.activeCutoffSec - leadTime) && !this.hasPreloadedForCurrentClip) {
         this.hasPreloadedForCurrentClip = true;
         this.preloadNext();
