@@ -98,6 +98,37 @@ class EffectsEngine {
   }
 
   /**
+   * Trigger CRT Power-On Warmup & Tuning Sequence (Initial Boot / Refresh)
+   * Displays vintage cathode ray tube static noise while initial YouTube player connects & buffers in the dark.
+   */
+  triggerWarmup(durationMs = 4200, onComplete = null) {
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+
+    this.isStaticActive = true;
+    if (this.canvas) {
+      this.canvas.classList.add('active');
+    }
+
+    this.renderNoiseFrame();
+
+    // After warmup duration, snap static off and reveal running broadcast
+    setTimeout(() => {
+      this.isStaticActive = false;
+      if (this.canvas) {
+        this.canvas.classList.remove('active');
+      }
+      if (this.animationFrameId) {
+        cancelAnimationFrame(this.animationFrameId);
+        this.animationFrameId = null;
+      }
+      if (onComplete) onComplete();
+    }, durationMs);
+  }
+
+  /**
    * Update Projection Washout Filter
    */
   updateWashoutSettings(contrast, brightness, opacity, enabled = true) {

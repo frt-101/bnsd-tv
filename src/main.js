@@ -74,11 +74,22 @@ async function bootstrapApp() {
     }
   });
 
-  // 6. Initialize YouTube Player Engine and Start Stream once players are ready
+  // 6. Initialize YouTube Player Engine and Start Stream with CRT Power-On Warmup
   const queue = catalogManager.generateChannelQueue(channelParam, adminController.enabledCategories, adminController.enabledDecades);
 
   const countEl = document.getElementById('tel-queue-count');
   if (countEl) countEl.textContent = `${queue.length.toLocaleString()} videos`;
+
+  // Start CRT Analog Warmup & Auto-Tuning Static Sequence
+  const eraBadge = document.getElementById('osd-era-badge');
+  const catLabel = document.getElementById('osd-category-label');
+  const chNum = adminController.getChannelNum(channelParam);
+  if (eraBadge) eraBadge.textContent = '⚡ POWER ON';
+  if (catLabel) catLabel.textContent = `TUNING CH ${chNum} BROADCAST...`;
+
+  effectsEngine.triggerWarmup(4200, () => {
+    playerEngine.updateOSD(playerEngine.currentVideoItem);
+  });
 
   const randomStartIndex = queue.length > 0 ? Math.floor(Math.random() * queue.length) : 0;
   playerEngine.init(queue, randomStartIndex, () => {
