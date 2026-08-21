@@ -103,6 +103,7 @@ class PlayerEngine {
 
     const defaultPlayerVars = {
       autoplay: 1,
+      mute: 1,
       controls: 0,
       cc_load_policy: 0,
       cc_lang_pref: 'none',
@@ -151,15 +152,7 @@ class PlayerEngine {
         start: startSecA
       },
       events: {
-        onReady: (e) => {
-          try {
-            e.target.mute();
-            if (this.activePlayerId === 'A') {
-              e.target.playVideo();
-            }
-          } catch (err) {}
-          checkReady();
-        },
+        onReady: () => checkReady(),
         onStateChange: (e) => this.handlePlayerStateChange('A', e),
         onError: (e) => this.handlePlayerError('A', e)
       }
@@ -174,12 +167,7 @@ class PlayerEngine {
         start: startSecB
       },
       events: {
-        onReady: (e) => {
-          try {
-            e.target.mute();
-          } catch (err) {}
-          checkReady();
-        },
+        onReady: () => checkReady(),
         onStateChange: (e) => this.handlePlayerStateChange('B', e),
         onError: (e) => this.handlePlayerError('B', e)
       }
@@ -221,15 +209,13 @@ class PlayerEngine {
     this.elapsedSeconds = 0;
     this.hasPreloadedForCurrentClip = false;
 
-    // Load active video on active player
+    // Load active video on active player purely via API
     if (activePlayer && typeof activePlayer.loadVideoById === 'function') {
       try {
         activePlayer.loadVideoById({
           videoId: this.currentVideoItem.videoId,
           startSeconds: startSec
         });
-        activePlayer.mute();
-        this.scheduleAutoplayFallback(activePlayer, this.currentVideoItem.videoId);
       } catch (e) {
         console.warn("loadVideoById error:", e);
       }
@@ -270,36 +256,10 @@ class PlayerEngine {
           videoId: nextItem.videoId,
           startSeconds: nextClip.startSec
         });
-        inactivePlayer.mute();
       } catch (e) {
         console.warn("preload loadVideoById error:", e);
       }
     }
-  }
-
-  /**
-   * Some kiosk WebViews are stricter about the URL's autoplay=1 param than
-   * they are about a JS-driven playVideo() call. If the active video hasn't
-   * actually started (still unstarted/cued) shortly after loading, nudge it
-   * directly through the Player API rather than waiting on the clip timer
-   * to eventually time it out.
-   */
-  scheduleAutoplayFallback(player, videoId) {
-    clearTimeout(this.autoplayFallbackTimeout);
-    this.autoplayFallbackTimeout = setTimeout(() => {
-      // Bail if the stream has already moved on to a different video.
-      if (!this.currentVideoItem || this.currentVideoItem.videoId !== videoId) return;
-
-      try {
-        if (typeof player.getPlayerState !== 'function') return;
-        const state = player.getPlayerState();
-        const isStalled = state === -1 /* UNSTARTED */ || state === 5 /* CUED */;
-        if (isStalled && typeof player.playVideo === 'function') {
-          console.warn(`Autoplay appears blocked for ${videoId} (state ${state}). Retrying via playVideo().`);
-          player.playVideo();
-        }
-      } catch (e) {}
-    }, 2000);
   }
 
   /**
