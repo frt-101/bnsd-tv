@@ -131,7 +131,7 @@ class EffectsEngine {
 
     // Step 3: 2.8s - Taking You Back
     const t2 = setTimeout(() => {
-      if (statusMsg) statusMsg.textContent = 'TAKING YOU BACK TO THE 90s...';
+      if (statusMsg) statusMsg.textContent = 'TAKING YOU BACK...';
       if (meterEl) meterEl.textContent = '[ ■■■■■■■■■■■■ ]';
     }, 2800);
 
