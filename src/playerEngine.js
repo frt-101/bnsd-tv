@@ -153,7 +153,6 @@ class PlayerEngine {
         onReady: (e) => {
           try {
             e.target.mute();
-            this.disableCaptions(e.target);
             if (this.activePlayerId === 'A') {
               e.target.playVideo();
             }
@@ -177,7 +176,6 @@ class PlayerEngine {
         onReady: (e) => {
           try {
             e.target.mute();
-            this.disableCaptions(e.target);
           } catch (err) {}
           checkReady();
         },
@@ -185,19 +183,6 @@ class PlayerEngine {
         onError: (e) => this.handlePlayerError('B', e)
       }
     });
-  }
-
-  /**
-   * Unload YouTube closed captions module cleanly without triggering player UI overlay
-   */
-  disableCaptions(player) {
-    if (!player) return;
-    try {
-      if (typeof player.unloadModule === 'function') {
-        player.unloadModule('captions');
-        player.unloadModule('cc');
-      }
-    } catch (e) {}
   }
 
   /**
@@ -243,7 +228,6 @@ class PlayerEngine {
           startSeconds: startSec
         });
         activePlayer.mute();
-        this.disableCaptions(activePlayer);
         this.scheduleAutoplayFallback(activePlayer, this.currentVideoItem.videoId);
       } catch (e) {
         console.warn("loadVideoById error:", e);
@@ -282,7 +266,6 @@ class PlayerEngine {
           startSeconds: nextClip.startSec
         });
         inactivePlayer.mute();
-        this.disableCaptions(inactivePlayer);
       } catch (e) {
         console.warn("cueVideoById error:", e);
       }
@@ -513,12 +496,6 @@ class PlayerEngine {
   }
 
   handlePlayerStateChange(playerId, event) {
-    const player = playerId === 'A' ? this.playerA : this.playerB;
-
-    if (event.data === 1) { // PLAYING
-      this.disableCaptions(player);
-    }
-
     // YT.PlayerState.ENDED = 0
     if (event.data === 0 && playerId === this.activePlayerId) {
       this.nextVideo();
