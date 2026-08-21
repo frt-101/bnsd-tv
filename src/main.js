@@ -96,6 +96,19 @@ async function bootstrapApp() {
     playerEngine.startStream(queue, randomStartIndex);
     startWatchdog();
   });
+
+  // Prevent browser from ever holding focus on YouTube iframes
+  window.addEventListener('blur', () => {
+    if (document.activeElement && document.activeElement.tagName === 'IFRAME') {
+      document.activeElement.blur();
+      window.focus();
+    }
+  });
+
+  document.getElementById('player-shield')?.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    window.focus();
+  });
 }
 
 // Launch application on DOM Ready
