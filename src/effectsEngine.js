@@ -99,21 +99,46 @@ class EffectsEngine {
 
   /**
    * Trigger CRT Power-On Warmup & Tuning Sequence (Initial Boot / Refresh)
-   * Displays vintage cathode ray tube turn-on beam & deep blue screen with glowing phosphor green OSD.
+   * Displays centered BNSD TV header, vintage cathode ray turn-on beam & deep blue screen with glowing phosphor green OSD.
    */
   triggerWarmup(durationMs = 4200, channelNum = '03', onComplete = null) {
     const poweronOverlay = document.getElementById('crt-poweron-overlay');
     const subLabel = document.getElementById('poweron-channel-sub');
+    const statusMsg = document.getElementById('poweron-status-msg');
+    const meterEl = document.getElementById('poweron-meter');
+
     if (subLabel) {
-      subLabel.textContent = `CH ${channelNum} • VIDEO 1 • STEREO`;
+      subLabel.textContent = `CH ${channelNum} • STEREO • VIDEO 1`;
+    }
+
+    if (statusMsg) {
+      statusMsg.textContent = 'WARMING UP CATHODE TUBE...';
+    }
+
+    if (meterEl) {
+      meterEl.textContent = '[ ■■■■□□□□□□□□ ]';
     }
 
     if (poweronOverlay) {
       poweronOverlay.classList.add('active');
     }
 
+    // Step 2: 1.4s - Acquiring Signal
+    const t1 = setTimeout(() => {
+      if (statusMsg) statusMsg.textContent = 'ACQUIRING BROADCAST SIGNAL...';
+      if (meterEl) meterEl.textContent = '[ ■■■■■■■■□□□□ ]';
+    }, 1400);
+
+    // Step 3: 2.8s - Taking You Back
+    const t2 = setTimeout(() => {
+      if (statusMsg) statusMsg.textContent = 'TAKING YOU BACK TO THE 90s...';
+      if (meterEl) meterEl.textContent = '[ ■■■■■■■■■■■■ ]';
+    }, 2800);
+
     // After warmup duration, smoothly dissolve the power-on screen and reveal running stream
     setTimeout(() => {
+      clearTimeout(t1);
+      clearTimeout(t2);
       if (poweronOverlay) {
         poweronOverlay.classList.remove('active');
       }
