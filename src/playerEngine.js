@@ -207,7 +207,6 @@ class PlayerEngine {
     if (!this.queue || this.queue.length === 0) return;
 
     // Skip over any videos flagged dead since this index was queued
-    // (e.g. quarantined by the other player, or restored from a prior session).
     this.currentIndex = this.findNextLiveIndex(this.currentIndex);
 
     this.currentVideoItem = this.queue[this.currentIndex];
@@ -220,7 +219,7 @@ class PlayerEngine {
     this.activeCutoffSec = maxDurationSec;
     this.elapsedSeconds = 0;
 
-    // Load active video on active player using idiomatic object parameters
+    // Load active video on active player
     if (activePlayer && typeof activePlayer.loadVideoById === 'function') {
       try {
         activePlayer.loadVideoById({
@@ -237,7 +236,7 @@ class PlayerEngine {
     // Update OSD green HUD display
     this.updateOSD(this.currentVideoItem);
 
-    // Preload NEXT video on inactive player
+    // Preload & start NEXT video on inactive player in the background
     this.preloadNext();
 
     // Start clip timing monitor
@@ -245,7 +244,8 @@ class PlayerEngine {
   }
 
   /**
-   * Cue the next live (non-quarantined) video on the currently inactive player using idiomatic object parameters
+   * Preload and start the next video on the hidden inactive player in the background (opacity: 0).
+   * Because it starts playing in the dark, all loading/buffering and pause overlays are invisible.
    */
   preloadNext() {
     if (!this.queue || this.queue.length === 0) return;
@@ -259,15 +259,15 @@ class PlayerEngine {
     this.cuedItems[inactivePlayerId] = nextItem;
     const nextClip = this.calculateSmartClip(nextItem);
 
-    if (inactivePlayer && typeof inactivePlayer.cueVideoById === 'function') {
+    if (inactivePlayer && typeof inactivePlayer.loadVideoById === 'function') {
       try {
-        inactivePlayer.cueVideoById({
+        inactivePlayer.loadVideoById({
           videoId: nextItem.videoId,
           startSeconds: nextClip.startSec
         });
         inactivePlayer.mute();
       } catch (e) {
-        console.warn("cueVideoById error:", e);
+        console.warn("preload loadVideoById error:", e);
       }
     }
   }
@@ -447,7 +447,7 @@ class PlayerEngine {
 
   /**
    * Advance to next video in queue with CRT channel static glitch.
-   * Automatically uses faster static burst for rapid zap clips.
+   * Seamlessly reveals the already-playing background player with zero pause or loading overlay.
    */
   nextVideo() {
     if (!this.queue || this.queue.length === 0) return;
@@ -458,14 +458,28 @@ class PlayerEngine {
     const staticDuration = this.zapBurstRemaining > 0 || this.isZapClip ? 160 : 250;
 
     effectsEngine.triggerChannelSwitch(staticDuration, () => {
-      // Swap active player container focus
+      // 1. Swap active player container focus (brings already-running background player to front)
       this.toggleActivePlayerFocus();
 
-      // Advance to the next live (non-quarantined) queue index
+      // 2. Advance to the next live queue index
       this.currentIndex = this.findNextLiveIndex((this.currentIndex + 1) % this.queue.length);
+      this.currentVideoItem = this.queue[this.currentIndex];
+      this.cuedItems[this.activePlayerId] = this.currentVideoItem;
+      this.lastAdvanceAt = Date.now();
 
-      // Play next video on the newly active player
-      this.playCurrentVideo();
+      // 3. Set cutoff duration for this newly active video
+      const { maxDurationSec } = this.calculateSmartClip(this.currentVideoItem);
+      this.activeCutoffSec = maxDurationSec;
+      this.elapsedSeconds = 0;
+
+      // 4. Update OSD green HUD display
+      this.updateOSD(this.currentVideoItem);
+
+      // 5. Start clip timing monitor
+      this.startClipTimer();
+
+      // 6. Preload and start NEXT video on the now-hidden inactive player
+      this.preloadNext();
     });
   }
 
