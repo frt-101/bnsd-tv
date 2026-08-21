@@ -99,30 +99,23 @@ class EffectsEngine {
 
   /**
    * Trigger CRT Power-On Warmup & Tuning Sequence (Initial Boot / Refresh)
-   * Displays vintage cathode ray tube static noise while initial YouTube player connects & buffers in the dark.
+   * Displays vintage cathode ray tube turn-on beam & deep blue screen with glowing phosphor green OSD.
    */
-  triggerWarmup(durationMs = 4200, onComplete = null) {
-    if (this.animationFrameId) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
+  triggerWarmup(durationMs = 4200, channelNum = '03', onComplete = null) {
+    const poweronOverlay = document.getElementById('crt-poweron-overlay');
+    const subLabel = document.getElementById('poweron-channel-sub');
+    if (subLabel) {
+      subLabel.textContent = `CH ${channelNum} • VIDEO 1 • STEREO`;
     }
 
-    this.isStaticActive = true;
-    if (this.canvas) {
-      this.canvas.classList.add('active');
+    if (poweronOverlay) {
+      poweronOverlay.classList.add('active');
     }
 
-    this.renderNoiseFrame();
-
-    // After warmup duration, snap static off and reveal running broadcast
+    // After warmup duration, smoothly dissolve the power-on screen and reveal running stream
     setTimeout(() => {
-      this.isStaticActive = false;
-      if (this.canvas) {
-        this.canvas.classList.remove('active');
-      }
-      if (this.animationFrameId) {
-        cancelAnimationFrame(this.animationFrameId);
-        this.animationFrameId = null;
+      if (poweronOverlay) {
+        poweronOverlay.classList.remove('active');
       }
       if (onComplete) onComplete();
     }, durationMs);
