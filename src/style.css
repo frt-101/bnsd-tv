@@ -214,7 +214,7 @@ html, body {
 .crt-poweron-osd {
   font-family: 'VT323', monospace;
   color: #00ff66;
-  text-shadow: 0 0 12px rgba(0, 255, 102, 0.9), 0 0 25px rgba(0, 255, 102, 0.5);
+  text-shadow: 0 0 6px rgba(0, 255, 102, 0.6);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -223,24 +223,24 @@ html, body {
 }
 
 .osd-poweron-badge {
-  background: rgba(0, 255, 102, 0.2);
-  border: 2px solid #00ff66;
+  background: rgba(0, 255, 102, 0.15);
+  border: 1.5px solid #00ff66;
   color: #00ff66;
-  font-size: clamp(16px, 2vw, 24px);
-  padding: 4px 16px;
-  border-radius: 4px;
+  font-size: clamp(16px, 1.8vw, 22px);
+  padding: 3px 14px;
+  border-radius: 3px;
   letter-spacing: 3px;
   font-weight: 700;
   text-transform: uppercase;
 }
 
 .osd-poweron-line.title {
-  font-size: clamp(52px, 8.5vw, 104px);
-  letter-spacing: 8px;
-  font-weight: 900;
+  font-size: clamp(48px, 7.5vw, 96px);
+  letter-spacing: 6px;
+  font-weight: 800;
   text-transform: uppercase;
   color: #00ff66;
-  text-shadow: 0 0 15px rgba(0, 255, 102, 1), 0 0 35px rgba(0, 255, 102, 0.7);
+  text-shadow: 0 0 6px rgba(0, 255, 102, 0.7);
   line-height: 1;
   margin: 6px 0;
 }

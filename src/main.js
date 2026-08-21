@@ -87,7 +87,7 @@ async function bootstrapApp() {
   if (eraBadge) eraBadge.textContent = '⚡ POWER ON';
   if (catLabel) catLabel.textContent = `TUNING CH ${chNum} BROADCAST...`;
 
-  effectsEngine.triggerWarmup(4200, chNum, () => {
+  effectsEngine.triggerWarmup(5800, chNum, () => {
     playerEngine.updateOSD(playerEngine.currentVideoItem);
   });
 

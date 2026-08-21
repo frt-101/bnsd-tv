@@ -101,7 +101,7 @@ class EffectsEngine {
    * Trigger CRT Power-On Warmup & Tuning Sequence (Initial Boot / Refresh)
    * Displays centered BNSD TV header, vintage cathode ray turn-on beam & deep blue screen with glowing phosphor green OSD.
    */
-  triggerWarmup(durationMs = 4200, channelNum = '03', onComplete = null) {
+  triggerWarmup(durationMs = 5800, channelNum = '03', onComplete = null) {
     const poweronOverlay = document.getElementById('crt-poweron-overlay');
     const subLabel = document.getElementById('poweron-channel-sub');
     const statusMsg = document.getElementById('poweron-status-msg');
@@ -123,17 +123,17 @@ class EffectsEngine {
       poweronOverlay.classList.add('active');
     }
 
-    // Step 2: 1.4s - Acquiring Signal
+    // Step 2: 2.0s - Acquiring Signal
     const t1 = setTimeout(() => {
       if (statusMsg) statusMsg.textContent = 'ACQUIRING BROADCAST SIGNAL...';
       if (meterEl) meterEl.textContent = '[ ■■■■■■■■□□□□ ]';
-    }, 1400);
+    }, 2000);
 
-    // Step 3: 2.8s - Taking You Back
+    // Step 3: 3.9s - Taking You Back
     const t2 = setTimeout(() => {
       if (statusMsg) statusMsg.textContent = 'TAKING YOU BACK...';
       if (meterEl) meterEl.textContent = '[ ■■■■■■■■■■■■ ]';
-    }, 2800);
+    }, 3900);
 
     // After warmup duration, smoothly dissolve the power-on screen and reveal running stream
     setTimeout(() => {
