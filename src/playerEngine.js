@@ -29,10 +29,10 @@ class PlayerEngine {
     this.randomOffsetEnabled = true;
     this.zapBurstEnabled = true;
 
-    // Surfing Zap Burst Engine (simulates quick remote clicks)
-    this.zapBurstRemaining = 0;
-    this.clipsSinceLastBurst = 0;
-    this.burstInterval = Math.floor(Math.random() * 3) + 5; // next burst in 5 to 7 clips
+    // Human Remote Surfing Engine (Authentic Psychological Session State Machine)
+    // Sessions cycle naturally: 'browse_flurry' (2-4 fast clicks) -> 'curious_glance' (15-30s) -> 'settle_in' (45-85s)
+    this.currentSessionType = 'settle_in';
+    this.sessionClipsRemaining = 1;
 
     // State Tracking
     this.currentVideoItem = null;
@@ -40,6 +40,7 @@ class PlayerEngine {
     this.elapsedSeconds = 0;
     this.activeCutoffSec = 30;
     this.isZapClip = false;
+    this.hasPreloadedForCurrentClip = false;
     this.onProgressCallback = null;
   }
 
@@ -218,6 +219,7 @@ class PlayerEngine {
     const { startSec, maxDurationSec } = this.calculateSmartClip(this.currentVideoItem);
     this.activeCutoffSec = maxDurationSec;
     this.elapsedSeconds = 0;
+    this.hasPreloadedForCurrentClip = false;
 
     // Load active video on active player
     if (activePlayer && typeof activePlayer.loadVideoById === 'function') {
@@ -236,8 +238,11 @@ class PlayerEngine {
     // Update OSD green HUD display
     this.updateOSD(this.currentVideoItem);
 
-    // Preload & start NEXT video on inactive player in the background
-    this.preloadNext();
+    // If initial clip is short (<= 5s), preload next video immediately
+    if (this.activeCutoffSec <= 5) {
+      this.hasPreloadedForCurrentClip = true;
+      this.preloadNext();
+    }
 
     // Start clip timing monitor
     this.startClipTimer();
@@ -316,8 +321,11 @@ class PlayerEngine {
   }
 
   /**
-   * Calculate smart clip duration and start offset based on category and visual pacing mode.
-   * Tailored specifically for silent visual projection (jumps past slow title cards & spoken intros).
+   * Calculate smart clip duration and start offset based on human channel-surfing behavior clusters.
+   * Alternates naturally between:
+   * 1. Rapid remote "flurry" clicks (5s to 9s) - "searching"
+   * 2. Curious glances (18s to 32s) - "hooked"
+   * 3. Settle-in deeper watches (45s to 85s) - "immersed"
    */
   calculateSmartClip(videoItem) {
     if (!videoItem) return { startSec: 0, maxDurationSec: 30 };
@@ -326,12 +334,22 @@ class PlayerEngine {
     let startSec = videoItem.startSec || 0;
     let maxDurationSec = 30;
 
-    // 1. Check if currently in a rapid "Zap Burst" (simulates fast channel surfing)
-    if (this.zapBurstEnabled && this.zapBurstRemaining > 0) {
+    // 1. Advance or establish the Human Surfing Session state
+    if (this.sessionClipsRemaining <= 0) {
+      this.pickNextSurfingSession();
+    }
+    this.sessionClipsRemaining--;
+
+    // 2. Mode-based pacing multipliers
+    const mode = this.pacingMode || 'channel-surfer';
+    const isDeepCuts = mode === 'deep-cuts';
+    const isBalanced = mode === 'balanced';
+
+    // 3. Derive duration based on current session mood and video category
+    if (this.currentSessionType === 'browse_flurry' && this.zapBurstEnabled) {
       this.isZapClip = true;
-      this.zapBurstRemaining--;
-      // Zap clips are ultra-punchy: 6 to 10 seconds
-      maxDurationSec = Math.floor(Math.random() * 5) + 6;
+      // Quick remote clicks: 5 to 9 seconds
+      maxDurationSec = Math.floor(Math.random() * 5) + 5;
       if (this.randomOffsetEnabled && startSec === 0) {
         startSec = this.getSmartVisualSeekOffset(cat);
       }
@@ -340,86 +358,35 @@ class PlayerEngine {
 
     this.isZapClip = false;
 
-    // 2. Schedule next Zap Burst interval
-    if (this.zapBurstEnabled) {
-      this.clipsSinceLastBurst++;
-      if (this.clipsSinceLastBurst >= this.burstInterval) {
-        this.clipsSinceLastBurst = 0;
-        this.burstInterval = Math.floor(Math.random() * 4) + 5; // next burst in 5 to 8 clips
-        this.zapBurstRemaining = Math.floor(Math.random() * 2) + 2; // 2 to 3 rapid zap clips
-      }
-    }
-
-    // 3. Category-specific durations and smart visual seek offsets
-    const mode = this.pacingMode || 'channel-surfer';
-
-    if (cat === 'commercials') {
-      // Commercials: 15-25s in surfer, 20-30s in balanced, 30-45s in deep-cuts
-      if (mode === 'channel-surfer') maxDurationSec = Math.floor(Math.random() * 11) + 15;
-      else if (mode === 'balanced') maxDurationSec = Math.floor(Math.random() * 11) + 20;
-      else maxDurationSec = Math.floor(Math.random() * 16) + 30;
-
-      // Commercials start at 0s for immediate visual hook
-      if (startSec === 0) startSec = 0;
-    } else if (cat === 'music') {
-      // Music: Needs time for beat, choreography, and visual concept
-      if (mode === 'channel-surfer') maxDurationSec = Math.floor(Math.random() * 16) + 28; // 28-43s
-      else if (mode === 'balanced') maxDurationSec = Math.floor(Math.random() * 21) + 38; // 38-58s
-      else maxDurationSec = Math.floor(Math.random() * 26) + 50; // 50-75s
-
-      // MUSIC VISUAL SEEK: Jump 30s to 90s to bypass MTV title cards and spoken intros
-      if (this.randomOffsetEnabled && startSec === 0) {
-        startSec = Math.floor(Math.random() * 61) + 30; // 30s to 90s
-      }
-    } else if (cat === 'cartoons' || cat === 'kids') {
-      // Cartoons / Kids: High visual kinetic energy
-      if (mode === 'channel-surfer') maxDurationSec = Math.floor(Math.random() * 16) + 20; // 20-35s
-      else if (mode === 'balanced') maxDurationSec = Math.floor(Math.random() * 21) + 30; // 30-50s
-      else maxDurationSec = Math.floor(Math.random() * 26) + 45; // 45-70s
-
-      // CARTOON VISUAL SEEK: 25% chance theme song (0s), 75% chance jump 45s-200s into slapstick
-      if (this.randomOffsetEnabled && startSec === 0) {
-        if (Math.random() < 0.25) {
-          startSec = 0;
-        } else {
-          startSec = Math.floor(Math.random() * 156) + 45; // 45s to 200s
-        }
-      }
-    } else if (cat === 'trailers') {
-      // Trailers: Fast cuts, high visual drama
-      if (mode === 'channel-surfer') maxDurationSec = Math.floor(Math.random() * 16) + 18; // 18-33s
-      else if (mode === 'balanced') maxDurationSec = Math.floor(Math.random() * 16) + 25; // 25-40s
-      else maxDurationSec = Math.floor(Math.random() * 21) + 35; // 35-55s
-
-      // Start at 0s-4s to catch title cards / opening VO
-      if (startSec === 0) startSec = Math.floor(Math.random() * 4);
-    } else if (cat === 'sports') {
-      // Sports / Action: Dunks, wrestling slams, extreme sports
-      if (mode === 'channel-surfer') maxDurationSec = Math.floor(Math.random() * 16) + 16; // 16-31s
-      else if (mode === 'balanced') maxDurationSec = Math.floor(Math.random() * 16) + 24; // 24-39s
-      else maxDurationSec = Math.floor(Math.random() * 21) + 35; // 35-55s
-
-      // Jump straight into action highlight (60s to 300s)
-      if (this.randomOffsetEnabled && startSec === 0) {
-        startSec = Math.floor(Math.random() * 241) + 60;
-      }
-    } else if (cat === 'gameshows' || cat === 'talkshows' || cat === 'soaps') {
-      // In silent projection, keep talking heads short & punchy
-      if (mode === 'channel-surfer') maxDurationSec = Math.floor(Math.random() * 9) + 12; // 12-20s
-      else if (mode === 'balanced') maxDurationSec = Math.floor(Math.random() * 11) + 18; // 18-28s
-      else maxDurationSec = Math.floor(Math.random() * 16) + 25; // 25-40s
-
-      if (this.randomOffsetEnabled && startSec === 0) {
-        startSec = Math.floor(Math.random() * 151) + 45; // 45s to 195s
+    if (this.currentSessionType === 'curious_glance') {
+      // 18 to 35 seconds - catch the hook / chorus / commercial punchline
+      if (cat === 'commercials') {
+        maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 11) + 25 : Math.floor(Math.random() * 11) + 16; // 16-27s
+        if (startSec === 0) startSec = 0;
+      } else if (cat === 'music') {
+        maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 16) + 35 : Math.floor(Math.random() * 11) + 26; // 26-37s
+        if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 51) + 30;
+      } else if (cat === 'cartoons' || cat === 'kids') {
+        maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 16) + 30 : Math.floor(Math.random() * 11) + 20; // 20-31s
+        if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 121) + 30;
+      } else {
+        maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 16) + 30 : Math.floor(Math.random() * 11) + 20; // 20-31s
+        if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 121) + 45;
       }
     } else {
-      // Comedy, Movies, Drama, Specials, Other
-      if (mode === 'channel-surfer') maxDurationSec = Math.floor(Math.random() * 16) + 20; // 20-35s
-      else if (mode === 'balanced') maxDurationSec = Math.floor(Math.random() * 16) + 28; // 28-43s
-      else maxDurationSec = Math.floor(Math.random() * 21) + 40; // 40-60s
-
-      if (this.randomOffsetEnabled && startSec === 0) {
-        startSec = Math.floor(Math.random() * 181) + 60; // 60s to 240s
+      // 'settle_in' session: 45 to 85 seconds - deep nostalgic immersion
+      if (cat === 'commercials') {
+        maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 16) + 30 : Math.floor(Math.random() * 11) + 22; // 22-33s
+        if (startSec === 0) startSec = 0;
+      } else if (cat === 'music') {
+        maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 26) + 65 : (isBalanced ? Math.floor(Math.random() * 21) + 48 : Math.floor(Math.random() * 21) + 40); // 40-69s
+        if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 61) + 30;
+      } else if (cat === 'cartoons' || cat === 'kids') {
+        maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 26) + 55 : (isBalanced ? Math.floor(Math.random() * 21) + 40 : Math.floor(Math.random() * 16) + 35); // 35-51s
+        if (this.randomOffsetEnabled && startSec === 0) startSec = Math.random() < 0.25 ? 0 : Math.floor(Math.random() * 156) + 45;
+      } else {
+        maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 26) + 60 : (isBalanced ? Math.floor(Math.random() * 21) + 45 : Math.floor(Math.random() * 16) + 35); // 35-51s
+        if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 181) + 60;
       }
     }
 
@@ -432,6 +399,46 @@ class PlayerEngine {
     }
 
     return { startSec, maxDurationSec };
+  }
+
+  /**
+   * Select next human surfing session mood based on natural psychological arcs
+   */
+  pickNextSurfingSession() {
+    const lastSession = this.currentSessionType;
+
+    if (lastSession === 'browse_flurry') {
+      // After a quick click flurry, human ALWAYS stops on something: 60% settle in, 40% glance
+      if (Math.random() < 0.6) {
+        this.currentSessionType = 'settle_in';
+        this.sessionClipsRemaining = 1;
+      } else {
+        this.currentSessionType = 'curious_glance';
+        this.sessionClipsRemaining = Math.floor(Math.random() * 2) + 1; // 1-2 clips
+      }
+    } else if (lastSession === 'settle_in') {
+      // After watching a long segment, 40% browse flurry, 60% curious glance
+      if (Math.random() < 0.40 && this.zapBurstEnabled) {
+        this.currentSessionType = 'browse_flurry';
+        this.sessionClipsRemaining = Math.floor(Math.random() * 3) + 2; // 2 to 4 rapid clicks
+      } else {
+        this.currentSessionType = 'curious_glance';
+        this.sessionClipsRemaining = Math.floor(Math.random() * 2) + 1;
+      }
+    } else {
+      // After a curious glance: 50% settle in, 30% browse flurry, 20% another glance
+      const rand = Math.random();
+      if (rand < 0.50) {
+        this.currentSessionType = 'settle_in';
+        this.sessionClipsRemaining = 1;
+      } else if (rand < 0.80 && this.zapBurstEnabled) {
+        this.currentSessionType = 'browse_flurry';
+        this.sessionClipsRemaining = Math.floor(Math.random() * 2) + 2; // 2-3 clicks
+      } else {
+        this.currentSessionType = 'curious_glance';
+        this.sessionClipsRemaining = 1;
+      }
+    }
   }
 
   /**
@@ -454,8 +461,8 @@ class PlayerEngine {
 
     this.clearClipTimer();
 
-    // Fast 160ms static during rapid zap bursts vs 250ms normal static
-    const staticDuration = this.zapBurstRemaining > 0 || this.isZapClip ? 160 : 250;
+    // Fast 140ms static during rapid browse flurries vs 240ms normal static
+    const staticDuration = this.isZapClip || this.currentSessionType === 'browse_flurry' ? 140 : 240;
 
     effectsEngine.triggerChannelSwitch(staticDuration, () => {
       // 1. Swap active player container focus (brings already-running background player to front)
@@ -471,6 +478,7 @@ class PlayerEngine {
       const { maxDurationSec } = this.calculateSmartClip(this.currentVideoItem);
       this.activeCutoffSec = maxDurationSec;
       this.elapsedSeconds = 0;
+      this.hasPreloadedForCurrentClip = false;
 
       // 4. Update OSD green HUD display
       this.updateOSD(this.currentVideoItem);
@@ -478,8 +486,11 @@ class PlayerEngine {
       // 5. Start clip timing monitor
       this.startClipTimer();
 
-      // 6. Preload and start NEXT video on the now-hidden inactive player
-      this.preloadNext();
+      // 6. If clip is ultra-short (<= 5s), preload next video immediately
+      if (this.activeCutoffSec <= 5) {
+        this.hasPreloadedForCurrentClip = true;
+        this.preloadNext();
+      }
     });
   }
 
@@ -613,6 +624,14 @@ class PlayerEngine {
           currentTime = activePlayer.getCurrentTime();
         }
       } catch (e) {}
+
+      // JIT background pre-loading: start background player 4s before channel switch
+      // so it loads and rolls in the dark without eating the beginning of the upcoming video!
+      const leadTime = 4;
+      if (this.elapsedSeconds >= Math.max(1, this.activeCutoffSec - leadTime) && !this.hasPreloadedForCurrentClip) {
+        this.hasPreloadedForCurrentClip = true;
+        this.preloadNext();
+      }
 
       // Auto-next if elapsed reaches cutoff OR if video is within 1.5s of ending
       const isCutoff = this.activeCutoffSec > 0 && this.elapsedSeconds >= this.activeCutoffSec;
