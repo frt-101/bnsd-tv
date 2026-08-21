@@ -276,12 +276,12 @@ html, body {
 /* On-Screen Display (OSD) Green CRT HUD */
 .osd-container {
   position: absolute;
-  top: 40px;
-  left: 40px;
+  top: clamp(35px, 4.5vh, 60px);
+  left: clamp(45px, 5.5vw, 85px);
   z-index: 30;
   font-family: 'VT323', monospace;
   color: var(--osd-green);
-  text-shadow: 0 0 12px var(--osd-glow), 0 0 2px var(--osd-green);
+  text-shadow: 0 0 10px var(--osd-glow), 0 0 2px var(--osd-green);
   pointer-events: none;
   transition: opacity 0.5s ease;
   user-select: none;

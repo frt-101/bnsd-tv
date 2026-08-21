@@ -631,17 +631,14 @@ class PlayerEngine {
     hud.classList.remove('hidden');
 
     const catLabel = document.getElementById('osd-category-label');
-    const eraLabel = document.getElementById('osd-era-badge');
     const channelLabel = document.getElementById('osd-channel-label');
 
     const chNum = admin ? admin.getChannelNum(admin.currentChannelId) : '03';
 
     if (osdMode === 'vcr-watermark') {
-      if (channelLabel) channelLabel.textContent = 'BNSD TV';
-      if (eraLabel) eraLabel.textContent = this.isZapClip ? '⚡ ZAP ►' : 'PLAY ►';
+      if (channelLabel) channelLabel.textContent = this.isZapClip ? 'BNSD TV ⚡' : 'BNSD TV';
     } else {
-      if (channelLabel) channelLabel.textContent = `CH ${chNum} • BNSD TV`;
-      if (eraLabel) eraLabel.textContent = this.isZapClip ? `⚡ ${videoItem?.decade || '1990s'}` : (videoItem?.decade || '1990s');
+      if (channelLabel) channelLabel.textContent = this.isZapClip ? `CH ${chNum} • BNSD TV ⚡` : `CH ${chNum} • BNSD TV`;
     }
 
     if (catLabel) {
