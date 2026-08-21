@@ -104,10 +104,15 @@ class PlayerEngine {
       autoplay: 1,
       controls: 0,
       cc_load_policy: 0,
+      cc_lang_pref: 'none',
       iv_load_policy: 3,
       modestbranding: 1,
       rel: 0,
-      playsinline: 1
+      playsinline: 1,
+      disablekb: 1,
+      fs: 0,
+      origin: window.location.origin,
+      enablejsapi: 1
     };
 
     let videoIdA = undefined;
@@ -230,21 +235,18 @@ class PlayerEngine {
     this.activeCutoffSec = maxDurationSec;
     this.elapsedSeconds = 0;
 
-    // Load active video on active player
+    // Load active video on active player using idiomatic object parameters
     if (activePlayer && typeof activePlayer.loadVideoById === 'function') {
       try {
-        activePlayer.loadVideoById(this.currentVideoItem.videoId, startSec);
+        activePlayer.loadVideoById({
+          videoId: this.currentVideoItem.videoId,
+          startSeconds: startSec
+        });
         activePlayer.mute();
         this.disableCaptions(activePlayer);
         this.scheduleAutoplayFallback(activePlayer, this.currentVideoItem.videoId);
       } catch (e) {
-        console.warn("loadVideoById fallback:", e);
-      }
-    } else {
-      const activeId = this.activePlayerId === 'A' ? 'player-a' : 'player-b';
-      const iframe = document.getElementById(activeId);
-      if (iframe) {
-        iframe.src = `https://www.youtube.com/embed/${this.currentVideoItem.videoId}?enablejsapi=1&autoplay=1&mute=1&controls=0&playsinline=1&cc_load_policy=0&cc_lang_pref=none&iv_load_policy=3&modestbranding=1&rel=0&start=${startSec}`;
+        console.warn("loadVideoById error:", e);
       }
     }
 
@@ -259,7 +261,7 @@ class PlayerEngine {
   }
 
   /**
-   * Cue the next live (non-quarantined) video on the currently inactive player.
+   * Cue the next live (non-quarantined) video on the currently inactive player using idiomatic object parameters
    */
   preloadNext() {
     if (!this.queue || this.queue.length === 0) return;
@@ -275,14 +277,14 @@ class PlayerEngine {
 
     if (inactivePlayer && typeof inactivePlayer.cueVideoById === 'function') {
       try {
-        inactivePlayer.cueVideoById(nextItem.videoId, nextClip.startSec);
+        inactivePlayer.cueVideoById({
+          videoId: nextItem.videoId,
+          startSeconds: nextClip.startSec
+        });
         inactivePlayer.mute();
-      } catch (e) {}
-    } else {
-      const inactiveId = inactivePlayerId === 'A' ? 'player-a' : 'player-b';
-      const nextIframe = document.getElementById(inactiveId);
-      if (nextIframe) {
-        nextIframe.src = `https://www.youtube.com/embed/${nextItem.videoId}?enablejsapi=1&autoplay=1&mute=1&controls=0&playsinline=1&cc_load_policy=0&iv_load_policy=3&modestbranding=1&rel=0&start=${nextClip.startSec}`;
+        this.disableCaptions(inactivePlayer);
+      } catch (e) {
+        console.warn("cueVideoById error:", e);
       }
     }
   }
@@ -530,6 +532,16 @@ class PlayerEngine {
    * full rotation.
    */
   handlePlayerError(playerId, event) {
+    const errorDescriptions = {
+      2: 'Invalid Video ID parameter',
+      5: 'HTML5 player playback error',
+      100: 'Video not found (removed or private)',
+      101: 'Playback not allowed by owner in embedded players',
+      150: 'Playback not allowed by owner in embedded players'
+    };
+    const errorCode = event?.data;
+    const reason = errorDescriptions[errorCode] || `Error Code ${errorCode}`;
+
     const erroredItem = this.cuedItems[playerId];
     if (erroredItem) {
       catalogManager.markVideoDead(erroredItem.videoId, erroredItem.title);
@@ -538,13 +550,13 @@ class PlayerEngine {
     // Errors from the inactive background preloader: just re-cue a live
     // replacement, no need to disrupt what's currently on screen.
     if (playerId !== this.activePlayerId) {
-      console.warn(`Preloader player ${playerId} hit an unplayable video (error ${event.data}). Re-cueing replacement.`);
+      console.warn(`Preloader player ${playerId} hit an unplayable video (${reason}): ${erroredItem?.videoId || 'unknown'}. Re-cueing replacement.`);
       this.preloadNext();
       return;
     }
 
     this.consecutiveErrorCount++;
-    console.warn(`Active player error (${event.data}). Consecutive error count: ${this.consecutiveErrorCount}`);
+    console.warn(`Active player error (${reason}): ${erroredItem?.videoId || 'unknown'}. Consecutive error count: ${this.consecutiveErrorCount}`);
 
     // If 3 consecutive errors occur, fast-forward 5 live steps ahead in queue without static glitch
     if (this.consecutiveErrorCount >= 3) {
@@ -558,6 +570,27 @@ class PlayerEngine {
 
     // INSTANTLY advance to next working video with 0ms delay
     this.nextVideo();
+  }
+
+  /**
+   * Cleanly destroy YouTube players to prevent memory leaks in kiosk mode
+   */
+  destroy() {
+    this.clearClipTimer();
+    clearTimeout(this.autoplayFallbackTimeout);
+
+    try {
+      if (this.playerA && typeof this.playerA.destroy === 'function') {
+        this.playerA.destroy();
+      }
+      if (this.playerB && typeof this.playerB.destroy === 'function') {
+        this.playerB.destroy();
+      }
+    } catch (e) {}
+
+    this.playerA = null;
+    this.playerB = null;
+    this.isApiReady = false;
   }
 
   /**
