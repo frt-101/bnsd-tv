@@ -183,7 +183,7 @@ class PlayerEngine {
   }
 
   /**
-   * Forcefully disable and unload YouTube closed captions / subtitle overlay
+   * Unload YouTube closed captions module cleanly without triggering player UI overlay
    */
   disableCaptions(player) {
     if (!player) return;
@@ -191,16 +191,6 @@ class PlayerEngine {
       if (typeof player.unloadModule === 'function') {
         player.unloadModule('captions');
         player.unloadModule('cc');
-      }
-      if (typeof player.setOption === 'function') {
-        player.setOption('captions', 'track', {});
-        player.setOption('cc', 'track', {});
-        player.setOption('captions', 'fontSize', -3);
-        player.setOption('captions', 'displaySettings', {
-          backgroundOpacity: 0,
-          textOpacity: 0,
-          windowOpacity: 0
-        });
       }
     } catch (e) {}
   }
@@ -257,11 +247,6 @@ class PlayerEngine {
         iframe.src = `https://www.youtube.com/embed/${this.currentVideoItem.videoId}?enablejsapi=1&autoplay=1&mute=1&controls=0&playsinline=1&cc_load_policy=0&cc_lang_pref=none&iv_load_policy=3&modestbranding=1&rel=0&start=${startSec}`;
       }
     }
-
-    // Force disable CC again with timer delays to catch async subtitle loading
-    this.disableCaptions(activePlayer);
-    setTimeout(() => this.disableCaptions(activePlayer), 300);
-    setTimeout(() => this.disableCaptions(activePlayer), 1000);
 
     // Update OSD green HUD display
     this.updateOSD(this.currentVideoItem);
@@ -528,12 +513,8 @@ class PlayerEngine {
   handlePlayerStateChange(playerId, event) {
     const player = playerId === 'A' ? this.playerA : this.playerB;
 
-    // Immediately disable captions whenever a video transitions to CUED (5), PLAYING (1), or BUFFERING (3)
-    if (event.data === 1 || event.data === 3 || event.data === 5) {
+    if (event.data === 1) { // PLAYING
       this.disableCaptions(player);
-      setTimeout(() => this.disableCaptions(player), 200);
-      setTimeout(() => this.disableCaptions(player), 600);
-      setTimeout(() => this.disableCaptions(player), 1500);
     }
 
     // YT.PlayerState.ENDED = 0
@@ -587,11 +568,6 @@ class PlayerEngine {
 
     this.clipTimer = setInterval(() => {
       this.elapsedSeconds++;
-
-      // Continue suppressing any delayed caption tracks during the first few seconds
-      if (this.elapsedSeconds <= 4) {
-        this.disableCaptions(this.getActivePlayer());
-      }
 
       if (this.onProgressCallback) {
         this.onProgressCallback({
