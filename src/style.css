@@ -100,7 +100,7 @@ html, body {
 }
 
 .player-iframe-container iframe {
-  transform: scale(1.18);
+  transform: scale(1.28);
   transform-origin: center center;
 }
 
