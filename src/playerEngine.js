@@ -186,7 +186,26 @@ class PlayerEngine {
       return;
     }
 
-    this.playCurrentVideo();
+    // On initial boot, Player A is already playing the first video from constructor playerVars!
+    // We only need to configure timing and start the background preloader for Player B.
+    this.currentIndex = this.findNextLiveIndex(this.currentIndex);
+    this.currentVideoItem = this.queue[this.currentIndex];
+    this.cuedItems['A'] = this.currentVideoItem;
+    this.lastAdvanceAt = Date.now();
+
+    const { maxDurationSec } = this.calculateSmartClip(this.currentVideoItem);
+    this.activeCutoffSec = maxDurationSec;
+    this.elapsedSeconds = 0;
+    this.hasPreloadedForCurrentClip = false;
+
+    this.updateOSD(this.currentVideoItem);
+
+    if (this.activeCutoffSec <= 10) {
+      this.hasPreloadedForCurrentClip = true;
+      this.preloadNext();
+    }
+
+    this.startClipTimer();
   }
 
   /**
@@ -485,6 +504,15 @@ class PlayerEngine {
     // YT.PlayerState.ENDED = 0
     if (event.data === 0 && playerId === this.activePlayerId) {
       this.nextVideo();
+    }
+    // YT.PlayerState.PAUSED = 2: If the active video was unexpectedly paused, resume immediately
+    if (event.data === 2 && playerId === this.activePlayerId) {
+      try {
+        const player = this.getActivePlayer();
+        if (player && typeof player.playVideo === 'function') {
+          player.playVideo();
+        }
+      } catch (e) {}
     }
   }
 
