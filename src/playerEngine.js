@@ -636,14 +636,13 @@ class PlayerEngine {
     const chNum = admin ? admin.getChannelNum(admin.currentChannelId) : '03';
 
     if (osdMode === 'vcr-watermark') {
-      if (channelLabel) channelLabel.textContent = this.isZapClip ? 'BNSD TV ⚡' : 'BNSD TV';
+      if (channelLabel) channelLabel.textContent = 'BNSD TV';
     } else {
-      if (channelLabel) channelLabel.textContent = this.isZapClip ? `CH ${chNum} • BNSD TV ⚡` : `CH ${chNum} • BNSD TV`;
+      if (channelLabel) channelLabel.textContent = `CH ${chNum} • BNSD TV`;
     }
 
     if (catLabel) {
-      const catText = (videoItem?.category || 'RETRO TV').toUpperCase();
-      catLabel.textContent = this.isZapClip ? `⚡ ${catText}` : catText;
+      catLabel.textContent = (videoItem?.category || 'RETRO TV').toUpperCase();
     }
   }
 

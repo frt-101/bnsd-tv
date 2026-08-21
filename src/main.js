@@ -84,7 +84,7 @@ async function bootstrapApp() {
   const eraBadge = document.getElementById('osd-era-badge');
   const catLabel = document.getElementById('osd-category-label');
   const chNum = adminController.getChannelNum(channelParam);
-  if (eraBadge) eraBadge.textContent = '⚡ POWER ON';
+  if (eraBadge) eraBadge.textContent = 'POWER ON';
   if (catLabel) catLabel.textContent = `TUNING CH ${chNum} BROADCAST...`;
 
   effectsEngine.triggerWarmup(5800, chNum, () => {
