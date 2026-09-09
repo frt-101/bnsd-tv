@@ -1,0 +1,3 @@
+## 2026-09-09 - Cap Internal Canvas Dimensions for Stretched Retro Overlay Effects
+**Learning:** Fullscreen canvas overlays like CRT static noise do not need high internal resolution (e.g. 960x540+ at 1080p/4K). CSS `width: 100%; height: 100%` automatically stretches internal canvas pixels. Setting high canvas dimensions causes massive `createImageData` memory allocations and millions of `Math.random()` loop iterations during startup/resize, as well as GPU texture upload bottlenecks per frame.
+**Action:** Cap internal overlay canvas resolution (e.g. 320px width) when CSS scaling is applied, and use fast bitwise math `(Math.random() * 255) | 0` instead of `Math.floor()`.
