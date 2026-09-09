@@ -34,13 +34,26 @@ class EffectsEngine {
 
   resizeCanvas() {
     if (!this.canvas) return;
-    this.canvas.width = Math.floor(window.innerWidth / 2);
-    this.canvas.height = Math.floor(window.innerHeight / 2);
+    // CRT static noise is inherently coarse retro pixel grain.
+    // Capping the internal canvas resolution to a fixed low-res target (320px width)
+    // reduces pixel buffer size from ~518k pixels (at 1080p) or ~2.07M pixels (at 4K) to ~57.6k pixels.
+    // CSS automatically stretches this canvas across the entire viewport, producing authentic CRT noise
+    // while reducing loop iterations, memory allocations, and GPU upload overhead by ~89%.
+    const maxTargetWidth = 320;
+    const aspect = window.innerHeight > 0 ? window.innerWidth / window.innerHeight : (16 / 9);
+    this.canvas.width = maxTargetWidth;
+    this.canvas.height = Math.max(1, Math.floor(maxTargetWidth / aspect));
   }
 
   /**
    * Pre-render a pool of authentic CRT static noise frames
    * to eliminate memory allocation and CPU load during 60fps rendering.
+   *
+   * PERFORMANCE OPTIMIZATION (⚡ Bolt):
+   * Capping internal frame size to ~320x180 (stretched via CSS) and using fast bitwise OR
+   * `(Math.random() * 255) | 0` instead of `Math.floor()`.
+   * Reduces loop iterations from 4.1M+ to ~460k during startup/resize and reduces GPU
+   * texture upload bandwidth during channel-switch transitions by ~89%.
    */
   initNoiseCache() {
     if (!this.ctx || !this.canvas) return;
@@ -57,7 +70,7 @@ class EffectsEngine {
       const buffer = new Uint32Array(imgData.data.buffer);
       const len = buffer.length;
       for (let i = 0; i < len; i++) {
-        const color = Math.floor(Math.random() * 255);
+        const color = (Math.random() * 255) | 0;
         buffer[i] = (255 << 24) | (color << 16) | (color << 8) | color;
       }
       this.noiseFrames.push(imgData);
