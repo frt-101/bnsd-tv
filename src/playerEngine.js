@@ -518,6 +518,7 @@ class PlayerEngine {
     this.advanceChannelNumber(isRapidSurfing);
 
     // Fast 140ms static during rapid browse flurries vs 240ms normal static
+    const staticDuration = isRapidSurfing ? 140 : 240;
     const hadPreloaded = this.hasPreloadedForCurrentClip;
 
     effectsEngine.triggerChannelSwitch(staticDuration, () => {
