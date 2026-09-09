@@ -119,6 +119,13 @@ async function bootstrapApp() {
   document.getElementById('player-shield')?.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     window.focus();
+    const activePlayer = playerEngine.getActivePlayer();
+    if (activePlayer && typeof activePlayer.playVideo === 'function') {
+      try {
+        if (typeof activePlayer.mute === 'function') activePlayer.mute();
+        activePlayer.playVideo();
+      } catch (err) {}
+    }
   });
 }
 

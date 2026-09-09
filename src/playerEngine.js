@@ -154,7 +154,15 @@ class PlayerEngine {
         start: startSecA
       },
       events: {
-        onReady: () => checkReady(),
+        onReady: (e) => {
+          try {
+            if (typeof e.target.mute === 'function') e.target.mute();
+            if (this.activePlayerId === 'A') {
+              e.target.playVideo();
+            }
+          } catch (err) {}
+          checkReady();
+        },
         onStateChange: (e) => this.handlePlayerStateChange('A', e),
         onError: (e) => this.handlePlayerError('A', e)
       }
@@ -169,7 +177,15 @@ class PlayerEngine {
         start: startSecB
       },
       events: {
-        onReady: () => checkReady(),
+        onReady: (e) => {
+          try {
+            if (typeof e.target.mute === 'function') e.target.mute();
+            if (this.activePlayerId === 'B') {
+              e.target.playVideo();
+            }
+          } catch (err) {}
+          checkReady();
+        },
         onStateChange: (e) => this.handlePlayerStateChange('B', e),
         onError: (e) => this.handlePlayerError('B', e)
       }
@@ -202,6 +218,15 @@ class PlayerEngine {
     this.hasPreloadedForCurrentClip = false;
 
     this.updateOSD(this.currentVideoItem);
+
+    // Explicitly guarantee active player is rolling
+    const activePlayer = this.getActivePlayer();
+    if (activePlayer) {
+      try {
+        if (typeof activePlayer.mute === 'function') activePlayer.mute();
+        if (typeof activePlayer.playVideo === 'function') activePlayer.playVideo();
+      } catch (e) {}
+    }
 
     if (this.activeCutoffSec <= 8) {
       this.hasPreloadedForCurrentClip = true;
@@ -581,12 +606,28 @@ class PlayerEngine {
     if (event.data === 0 && playerId === this.activePlayerId) {
       this.nextVideo();
     }
+    // YT.PlayerState.PLAYING = 1: video started rolling, reset stuck counter
+    if (event.data === 1 && playerId === this.activePlayerId) {
+      this.stuckSeconds = 0;
+    }
     // YT.PlayerState.PAUSED = 2: If any video is unexpectedly paused (not the deliberately paused outgoing player), resume immediately
     if (event.data === 2) {
       if (!this.deliberatelyPaused[playerId]) {
         try {
           const player = playerId === 'A' ? this.playerA : this.playerB;
           if (player && typeof player.playVideo === 'function') {
+            player.playVideo();
+          }
+        } catch (e) {}
+      }
+    }
+    // YT.PlayerState.CUED = 5: If a video is in CUED state, immediately command it to play
+    if (event.data === 5) {
+      if (!this.deliberatelyPaused[playerId]) {
+        try {
+          const player = playerId === 'A' ? this.playerA : this.playerB;
+          if (player && typeof player.playVideo === 'function') {
+            if (typeof player.mute === 'function') player.mute();
             player.playVideo();
           }
         } catch (e) {}
@@ -679,11 +720,15 @@ class PlayerEngine {
         });
       }
 
-      // Query live player duration and current position
+      // Query live player state, duration, and current position
       const activePlayer = this.getActivePlayer();
       let duration = 0;
       let currentTime = 0;
+      let playerState = -1;
       try {
+        if (activePlayer && typeof activePlayer.getPlayerState === 'function') {
+          playerState = activePlayer.getPlayerState();
+        }
         if (activePlayer && typeof activePlayer.getDuration === 'function') {
           duration = activePlayer.getDuration();
         }
@@ -691,6 +736,28 @@ class PlayerEngine {
           currentTime = activePlayer.getCurrentTime();
         }
       } catch (e) {}
+
+      // If active video is stuck in UNSTARTED (-1), CUED (5), or unexpectedly frozen
+      if (playerState !== 1 && playerState !== 3) {
+        this.stuckSeconds = (this.stuckSeconds || 0) + 1;
+        try {
+          if (activePlayer && typeof activePlayer.mute === 'function') activePlayer.mute();
+          if (activePlayer && typeof activePlayer.playVideo === 'function') activePlayer.playVideo();
+        } catch (e) {}
+
+        // If stuck for 4 seconds, mark dead and automatically advance with CRT static glitch
+        if (this.stuckSeconds >= 4) {
+          console.warn(`Video ${this.currentVideoItem?.videoId} stuck in state ${playerState}. Skipping...`);
+          this.stuckSeconds = 0;
+          if (this.currentVideoItem) {
+            catalogManager.markVideoDead(this.currentVideoItem.videoId, this.currentVideoItem.title);
+          }
+          this.nextVideo();
+          return;
+        }
+      } else {
+        this.stuckSeconds = 0;
+      }
 
       // JIT background pre-loading: start background player 7s before channel switch
       // so YouTube's 5.0-second startup bezel expires 100% in the dark!
