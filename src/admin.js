@@ -281,9 +281,17 @@ class AdminController {
       if (!val) return;
 
       let vid = val;
-      const match = val.match(/(?:[?&]v=|\/embed\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+      // Extract video ID from standard YouTube URLs (watch, embed, shortlink, shorts)
+      const match = val.match(/(?:[?&]v=|\/embed\/|youtu\.be\/|\/v\/|\/shorts\/)([a-zA-Z0-9_-]{11})/);
       if (match && match[1]) {
         vid = match[1];
+      }
+
+      // Security: Validate that video ID strictly matches YouTube's 11-character format
+      const YOUTUBE_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
+      if (!YOUTUBE_ID_REGEX.test(vid)) {
+        alert("Invalid YouTube Video ID or URL. Please enter a valid 11-character YouTube ID or URL.");
+        return;
       }
 
       const testItem = {
