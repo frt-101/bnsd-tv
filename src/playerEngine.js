@@ -45,6 +45,39 @@ class PlayerEngine {
     this.isZapClip = false;
     this.hasPreloadedForCurrentClip = false;
     this.onProgressCallback = null;
+
+    // calculateSmartClip() both rolls a random duration AND advances the
+    // human-surfing session state machine (sessionClipsRemaining--). Every
+    // video is run through it once when it's preloaded (to get its startSec)
+    // and again once it becomes current (to get its on-screen cutoff) --
+    // without this cache those were two separate calls, silently burning two
+    // session "ticks" per video actually shown instead of one, so a
+    // browse_flurry configured for e.g. 3 rapid clicks only ever showed
+    // ~1.5 of them before the mood flipped. This caches the duration rolled
+    // at preload time so activation reuses it instead of rerolling.
+    this.pendingClipCache = new Map(); // videoId -> maxDurationSec
+  }
+
+  /**
+   * Cache the duration calculateSmartClip() rolled for a video at preload
+   * time, so the same video's activation later reuses it instead of calling
+   * calculateSmartClip() (and its session-state side effects) a second time.
+   */
+  cachePendingClipDuration(videoItem, maxDurationSec) {
+    if (!videoItem) return;
+    this.pendingClipCache.set(videoItem.videoId, maxDurationSec);
+  }
+
+  /**
+   * Consume (and remove) a cached preload-time duration for this video, if
+   * one exists. Returns null if there's no cached value, so callers can fall
+   * back to a fresh calculateSmartClip() call.
+   */
+  consumePendingClipDuration(videoItem) {
+    if (!videoItem || !this.pendingClipCache.has(videoItem.videoId)) return null;
+    const maxDurationSec = this.pendingClipCache.get(videoItem.videoId);
+    this.pendingClipCache.delete(videoItem.videoId);
+    return maxDurationSec;
   }
 
   /**
@@ -134,6 +167,7 @@ class PlayerEngine {
         const clipA = this.calculateSmartClip(this.currentVideoItem);
         startSecA = clipA.startSec;
         this.activeCutoffSec = clipA.maxDurationSec;
+        this.cachePendingClipDuration(this.currentVideoItem, clipA.maxDurationSec);
       }
 
       const nextIndex = this.findNextLiveIndex((this.currentIndex + 1) % this.queue.length);
@@ -143,6 +177,7 @@ class PlayerEngine {
         videoIdB = nextItem.videoId;
         const clipB = this.calculateSmartClip(nextItem);
         startSecB = clipB.startSec;
+        this.cachePendingClipDuration(nextItem, clipB.maxDurationSec);
       }
     }
 
@@ -213,7 +248,10 @@ class PlayerEngine {
     this.deliberatelyPaused['A'] = false;
     this.lastAdvanceAt = Date.now();
 
-    const { maxDurationSec } = this.calculateSmartClip(this.currentVideoItem);
+    let maxDurationSec = this.consumePendingClipDuration(this.currentVideoItem);
+    if (maxDurationSec == null) {
+      maxDurationSec = this.calculateSmartClip(this.currentVideoItem).maxDurationSec;
+    }
     this.activeCutoffSec = maxDurationSec;
     this.elapsedSeconds = 0;
     this.hasPreloadedForCurrentClip = false;
@@ -254,6 +292,7 @@ class PlayerEngine {
     this.deliberatelyPaused[inactivePlayerId] = false;
     this.preloadedAt = Date.now();
     const nextClip = this.calculateSmartClip(nextItem);
+    this.cachePendingClipDuration(nextItem, nextClip.maxDurationSec);
 
     if (inactivePlayer && typeof inactivePlayer.loadVideoById === 'function') {
       try {
@@ -516,8 +555,13 @@ class PlayerEngine {
       this.deliberatelyPaused[this.activePlayerId] = false;
       this.lastAdvanceAt = Date.now();
 
-      // 3. Set cutoff duration for this newly active video
-      const { maxDurationSec } = this.calculateSmartClip(this.currentVideoItem);
+      // 3. Set cutoff duration for this newly active video (reuse the
+      // duration already rolled for it at preload time, if we have one, so
+      // the human-surfing session state machine only ticks once per video)
+      let maxDurationSec = this.consumePendingClipDuration(this.currentVideoItem);
+      if (maxDurationSec == null) {
+        maxDurationSec = this.calculateSmartClip(this.currentVideoItem).maxDurationSec;
+      }
       this.activeCutoffSec = maxDurationSec;
       this.elapsedSeconds = 0;
       this.hasPreloadedForCurrentClip = false;
@@ -616,6 +660,7 @@ class PlayerEngine {
     const erroredItem = this.cuedItems[playerId];
     if (erroredItem) {
       catalogManager.markVideoDead(erroredItem.videoId, erroredItem.title);
+      this.pendingClipCache.delete(erroredItem.videoId);
     }
 
     // Errors from the inactive background preloader: just re-cue a live

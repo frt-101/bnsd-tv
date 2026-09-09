@@ -113,9 +113,12 @@ watchdog (Section 2, Step C):
 - **Stall detection:** if no channel change has happened in 5 minutes — far
   longer than any configured clip cutoff — the player is assumed wedged
   (frozen embed, dead event loop, etc.) and the page does a full reload.
-- **Preventive reload:** the page reloads itself every 6 hours regardless,
-  as cheap insurance against slow memory/state buildup in a long-lived
-  WebView tab.
+- **Preventive reload:** once a day, the page reloads itself the first time
+  the local clock crosses 3 AM — cheap insurance against slow memory/state
+  buildup in a long-lived WebView tab, timed to land inside FreeKiosk's own
+  overnight blank window (Section 3) rather than mid-service. If a
+  location's actual off/on schedule doesn't put 3 AM inside its blank
+  window, adjust `PREVENTIVE_RELOAD_HOUR_LOCAL` in `src/watchdog.js`.
 
 Both just call `window.location.reload()`, which re-runs the same boot flow
 in Section 3 — no manual intervention needed either way.
