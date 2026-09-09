@@ -3,8 +3,9 @@
 //
 // Ingests, unscrambles, and curates retro video stream archives:
 // - Decodes 11-character permutation-ciphered YouTube video IDs
-// - Extracts and maps categories across 1980–2009
-// - Filters out News and Politics to keep only nostalgic cultural moments
+// - Extracts and maps high-energy nostalgic cultural categories across 1980–2009
+// - Filters out News, Soaps, Drama, Talkshows, and generic Other
+// - Filters out known dead/embed-restricted video IDs
 // - Generates canonical CSV files and bundled runtime catalog
 //
 // Run via: npm run build-catalog
@@ -16,6 +17,7 @@ import Papa from 'papaparse';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const rawCachePath = path.join(root, 'scripts', 'raw_decades.json');
+const deadCachePath = path.join(root, 'scripts', 'dead_streams.json');
 const csvPath = path.join(root, 'bnsd_tv_playlist.csv');
 const publicCsvPath = path.join(root, 'public', 'bnsd_tv_playlist.csv');
 const catalogOutPath = path.join(root, 'src', 'catalogData.js');
@@ -65,22 +67,33 @@ function decodeVideoId(scrambled) {
   return row.map(idx => chars[idx]).join('');
 }
 
+// Curated Category Map: Includes high-visual, nostalgic categories
+// Explicitly excludes news, soaps, drama, talkshows, and generic filler
 const CATEGORY_MAP = {
   c: 'Cartoons',
   s: 'Comedy',
   a: 'Commercials',
-  d: 'Drama',
   g: 'Gameshows',
   k: 'Kids',
   e: 'Movies',
   m: 'Music',
-  n: 'News', // Filtered out
-  o: 'Other',
-  z: 'Soaps',
   p: 'Specials',
   r: 'Sports',
-  t: 'Talkshows',
   f: 'Trailers'
+  // Excluded:
+  // n: 'News' (politics/tragedy)
+  // z: 'Soaps' (slow talking heads)
+  // d: 'Drama' (dialogue-heavy)
+  // t: 'Talkshows' (controversial/talking heads)
+  // o: 'Other' (generic filler)
+};
+
+const EXCLUDED_CATEGORIES = {
+  n: 'News',
+  z: 'Soaps',
+  d: 'Drama',
+  t: 'Talkshows',
+  o: 'Other'
 };
 
 const DECADE_CONFIGS = [
@@ -102,15 +115,29 @@ async function loadRawDecades() {
   throw new Error('scripts/raw_decades.json not found. Please provide the raw database snapshot.');
 }
 
+function loadDeadSet() {
+  if (fs.existsSync(deadCachePath)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(deadCachePath, 'utf8'));
+      return new Set(Object.keys(data));
+    } catch (e) {}
+  }
+  return new Set();
+}
+
 async function buildDatabase() {
-  console.log('=== BNSD TV Multi-Decade Database Builder ===');
+  console.log('=== BNSD TV Multi-Decade Database Builder (Curated) ===');
   const rawData = await loadRawDecades();
+  const deadSet = loadDeadSet();
+  if (deadSet.size > 0) {
+    console.log(`Loaded ${deadSet.size} known dead/embed-restricted video IDs to exclude.`);
+  }
 
   const seenIds = new Set();
   const rows = [];
   const decadeCounts = {};
   const categoryCounts = {};
-  let excludedNewsCount = 0;
+  const excludedCounts = {};
 
   for (const cfg of DECADE_CONFIGS) {
     decadeCounts[cfg.name] = 0;
@@ -131,16 +158,22 @@ async function buildDatabase() {
 
         const scrambledId = chunk.substring(0, 11);
         const code = chunk.slice(-1).toLowerCase();
-        const categoryName = CATEGORY_MAP[code];
 
-        // Filter out news, politics, or unknown category tags
-        if (!categoryName || categoryName === 'News') {
-          if (categoryName === 'News') excludedNewsCount++;
+        // Track and filter excluded categories
+        if (EXCLUDED_CATEGORIES[code]) {
+          const exName = EXCLUDED_CATEGORIES[code];
+          excludedCounts[exName] = (excludedCounts[exName] || 0) + 1;
           continue;
         }
 
+        const categoryName = CATEGORY_MAP[code];
+        if (!categoryName) continue;
+
         const realVideoId = decodeVideoId(scrambledId);
         if (!realVideoId || realVideoId.length !== 11) continue;
+
+        // Skip known dead streams
+        if (deadSet.has(realVideoId)) continue;
 
         // Deduplicate across all years and decades
         if (seenIds.has(realVideoId)) continue;
@@ -162,11 +195,12 @@ async function buildDatabase() {
     }
   }
 
-  console.log(`\nExtracted ${rows.length} unique video streams across ${DECADE_CONFIGS.length} decades.`);
-  console.log(`Filtered out ${excludedNewsCount} news/political broadcasts.`);
-  console.log('\nDecade Breakdown:');
+  console.log(`\nExtracted ${rows.length} curated unique video streams across ${DECADE_CONFIGS.length} decades.`);
+  console.log('\nExcluded Low-Interest / Risky Categories:');
+  console.table(excludedCounts);
+  console.log('\nActive Decade Breakdown:');
   console.table(decadeCounts);
-  console.log('\nCategory Breakdown:');
+  console.log('\nActive Category Breakdown:');
   console.table(categoryCounts);
 
   // 1. Write CSV to root and public/
@@ -177,7 +211,7 @@ async function buildDatabase() {
 
   // 2. Write Optimized Bundled JS module src/catalogData.js
   const uniqueDecades = ['1980s', '1990s', '2000s'];
-  const uniqueCategories = Object.values(CATEGORY_MAP).filter(c => c !== 'News').sort();
+  const uniqueCategories = Object.values(CATEGORY_MAP).sort();
 
   const compactStreams = rows.map(r => [
     uniqueDecades.indexOf(r.decade),
@@ -194,7 +228,7 @@ async function buildDatabase() {
 
   const banner =
     '// AUTO-GENERATED by `npm run build-catalog`.\n' +
-    '// BNSD TV Master Playlist Catalog (1980s, 1990s, 2000s)\n' +
+    '// BNSD TV Master Curated Playlist Catalog (1980s, 1990s, 2000s)\n' +
     '// Do not hand-edit — regenerate with `npm run build-catalog`.\n' +
     'export const BNSD_TV_CATALOG = ' + JSON.stringify(compactPayload) + ';\n' +
     'export const DEFAULT_90S_CATALOG = BNSD_TV_CATALOG;\n';

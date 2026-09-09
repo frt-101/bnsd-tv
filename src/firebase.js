@@ -43,7 +43,11 @@ export async function saveChannelConfig(channelId, configData) {
   };
 
   // Save to LocalStorage for instant reliable fallback
-  localStorage.setItem(`bnsd_channel_${channelId}`, JSON.stringify(payload));
+  try {
+    localStorage.setItem(`bnsd_channel_${channelId}`, JSON.stringify(payload));
+  } catch (e) {
+    console.warn("LocalStorage write error:", e);
+  }
 
   // Save to Firestore if available
   if (isFirebaseConnected && db) {
@@ -61,12 +65,12 @@ export async function saveChannelConfig(channelId, configData) {
  */
 export function subscribeChannelConfig(channelId, callback) {
   // Load initial local config
-  const localRaw = localStorage.getItem(`bnsd_channel_${channelId}`);
-  if (localRaw) {
-    try {
+  try {
+    const localRaw = localStorage.getItem(`bnsd_channel_${channelId}`);
+    if (localRaw) {
       callback(JSON.parse(localRaw));
-    } catch (e) {}
-  }
+    }
+  } catch (e) {}
 
   // Listen to Firestore real-time doc
   if (isFirebaseConnected && db) {
@@ -75,7 +79,9 @@ export function subscribeChannelConfig(channelId, callback) {
       return onSnapshot(channelRef, (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          localStorage.setItem(`bnsd_channel_${channelId}`, JSON.stringify(data));
+          try {
+            localStorage.setItem(`bnsd_channel_${channelId}`, JSON.stringify(data));
+          } catch (e) {}
           callback(data);
         }
       });

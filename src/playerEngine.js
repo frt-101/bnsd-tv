@@ -21,6 +21,7 @@ class PlayerEngine {
     // so error handling can identify and quarantine the right video regardless
     // of which player (active or preloading) reported the error.
     this.cuedItems = { A: null, B: null };
+    this.deliberatelyPaused = { A: false, B: false };
 
     // Config Rules & Pacing Modes
     this.pacingMode = 'channel-surfer'; // 'channel-surfer' | 'balanced' | 'deep-cuts'
@@ -35,6 +36,7 @@ class PlayerEngine {
     this.sessionClipsRemaining = 1;
 
     // State Tracking
+    this.currentChannelNumber = 3;
     this.currentVideoItem = null;
     this.clipTimer = null;
     this.elapsedSeconds = 0;
@@ -191,6 +193,7 @@ class PlayerEngine {
     this.currentIndex = this.findNextLiveIndex(this.currentIndex);
     this.currentVideoItem = this.queue[this.currentIndex];
     this.cuedItems['A'] = this.currentVideoItem;
+    this.deliberatelyPaused['A'] = false;
     this.lastAdvanceAt = Date.now();
 
     const { maxDurationSec } = this.calculateSmartClip(this.currentVideoItem);
@@ -200,7 +203,7 @@ class PlayerEngine {
 
     this.updateOSD(this.currentVideoItem);
 
-    if (this.activeCutoffSec <= 10) {
+    if (this.activeCutoffSec <= 8) {
       this.hasPreloadedForCurrentClip = true;
       this.preloadNext();
     }
@@ -219,6 +222,7 @@ class PlayerEngine {
 
     this.currentVideoItem = this.queue[this.currentIndex];
     this.cuedItems[this.activePlayerId] = this.currentVideoItem;
+    this.deliberatelyPaused[this.activePlayerId] = false;
     this.lastAdvanceAt = Date.now();
     const activePlayer = this.getActivePlayer();
 
@@ -231,6 +235,9 @@ class PlayerEngine {
     // Load active video on active player purely via API
     if (activePlayer && typeof activePlayer.loadVideoById === 'function') {
       try {
+        if (typeof activePlayer.mute === 'function') {
+          activePlayer.mute();
+        }
         activePlayer.loadVideoById({
           videoId: this.currentVideoItem.videoId,
           startSeconds: startSec
@@ -243,8 +250,8 @@ class PlayerEngine {
     // Update OSD green HUD display
     this.updateOSD(this.currentVideoItem);
 
-    // If initial clip is short (<= 10s), preload next video immediately
-    if (this.activeCutoffSec <= 10) {
+    // If initial clip is short (<= 8s), preload next video immediately
+    if (this.activeCutoffSec <= 8) {
       this.hasPreloadedForCurrentClip = true;
       this.preloadNext();
     }
@@ -267,11 +274,15 @@ class PlayerEngine {
     if (!nextItem) return;
 
     this.cuedItems[inactivePlayerId] = nextItem;
+    this.deliberatelyPaused[inactivePlayerId] = false;
     this.preloadedAt = Date.now();
     const nextClip = this.calculateSmartClip(nextItem);
 
     if (inactivePlayer && typeof inactivePlayer.loadVideoById === 'function') {
       try {
+        if (typeof inactivePlayer.mute === 'function') {
+          inactivePlayer.mute();
+        }
         inactivePlayer.loadVideoById({
           videoId: nextItem.videoId,
           startSeconds: nextClip.startSec
@@ -298,6 +309,28 @@ class PlayerEngine {
     }
     console.warn("Every video in the current queue is flagged dead. Playing anyway.");
     return startIndex;
+  }
+
+  /**
+   * Advance the virtual channel number to simulate human remote control surfing.
+   * In rapid browse/zap bursts: steps sequentially (e.g. 23 -> 24 -> 25).
+   * In standard channel flips: hops to another realistic vintage cable channel number.
+   */
+  advanceChannelNumber(isSequential = false) {
+    if (isSequential) {
+      this.currentChannelNumber = (this.currentChannelNumber >= 68) ? 2 : this.currentChannelNumber + 1;
+    } else {
+      const realisticChannels = [2, 3, 4, 5, 7, 9, 11, 13, 14, 18, 22, 24, 28, 32, 36, 42, 45, 51, 55, 60, 68];
+      let next = this.currentChannelNumber;
+      while (next === this.currentChannelNumber) {
+        next = realisticChannels[Math.floor(Math.random() * realisticChannels.length)];
+      }
+      this.currentChannelNumber = next;
+    }
+  }
+
+  getChannelNumberString() {
+    return String(this.currentChannelNumber).padStart(2, '0');
   }
 
   /**
@@ -328,8 +361,8 @@ class PlayerEngine {
     // 3. Derive duration based on current session mood and video category
     if (this.currentSessionType === 'browse_flurry' && this.zapBurstEnabled) {
       this.isZapClip = true;
-      // Quick remote clicks: 5 to 9 seconds
-      maxDurationSec = Math.floor(Math.random() * 5) + 5;
+      // Quick remote clicks: 8 to 11 seconds (ensures background preloader has sufficient lead time)
+      maxDurationSec = Math.floor(Math.random() * 4) + 8;
       if (this.randomOffsetEnabled && startSec === 0) {
         startSec = this.getSmartVisualSeekOffset(cat);
       }
@@ -339,16 +372,22 @@ class PlayerEngine {
     this.isZapClip = false;
 
     if (this.currentSessionType === 'curious_glance') {
-      // 18 to 35 seconds - catch the hook / chorus / commercial punchline
+      // 18 to 35 seconds - catch the hook / chorus / commercial punchline / gameshow buzzer
       if (cat === 'commercials') {
         maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 11) + 25 : Math.floor(Math.random() * 11) + 16; // 16-27s
         if (startSec === 0) startSec = 0;
+      } else if (cat === 'gameshows') {
+        maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 16) + 35 : Math.floor(Math.random() * 11) + 24; // 24-35s
+        if (this.randomOffsetEnabled && startSec === 0) startSec = this.getSmartVisualSeekOffset(cat);
       } else if (cat === 'music') {
         maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 16) + 35 : Math.floor(Math.random() * 11) + 26; // 26-37s
         if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 51) + 30;
       } else if (cat === 'cartoons' || cat === 'kids') {
         maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 16) + 30 : Math.floor(Math.random() * 11) + 20; // 20-31s
         if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 121) + 30;
+      } else if (cat === 'comedy') {
+        maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 16) + 32 : Math.floor(Math.random() * 11) + 22; // 22-33s
+        if (this.randomOffsetEnabled && startSec === 0) startSec = this.getSmartVisualSeekOffset(cat);
       } else {
         maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 16) + 30 : Math.floor(Math.random() * 11) + 20; // 20-31s
         if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 121) + 45;
@@ -358,12 +397,18 @@ class PlayerEngine {
       if (cat === 'commercials') {
         maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 16) + 30 : Math.floor(Math.random() * 11) + 22; // 22-33s
         if (startSec === 0) startSec = 0;
+      } else if (cat === 'gameshows') {
+        maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 26) + 60 : (isBalanced ? Math.floor(Math.random() * 21) + 45 : Math.floor(Math.random() * 16) + 38); // 38-54s
+        if (this.randomOffsetEnabled && startSec === 0) startSec = this.getSmartVisualSeekOffset(cat);
       } else if (cat === 'music') {
         maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 26) + 65 : (isBalanced ? Math.floor(Math.random() * 21) + 48 : Math.floor(Math.random() * 21) + 40); // 40-69s
         if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 61) + 30;
       } else if (cat === 'cartoons' || cat === 'kids') {
         maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 26) + 55 : (isBalanced ? Math.floor(Math.random() * 21) + 40 : Math.floor(Math.random() * 16) + 35); // 35-51s
         if (this.randomOffsetEnabled && startSec === 0) startSec = Math.random() < 0.25 ? 0 : Math.floor(Math.random() * 156) + 45;
+      } else if (cat === 'comedy') {
+        maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 26) + 60 : (isBalanced ? Math.floor(Math.random() * 21) + 42 : Math.floor(Math.random() * 16) + 35); // 35-51s
+        if (this.randomOffsetEnabled && startSec === 0) startSec = this.getSmartVisualSeekOffset(cat);
       } else {
         maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 26) + 60 : (isBalanced ? Math.floor(Math.random() * 21) + 45 : Math.floor(Math.random() * 16) + 35); // 35-51s
         if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 181) + 60;
@@ -426,9 +471,11 @@ class PlayerEngine {
    */
   getSmartVisualSeekOffset(cat) {
     if (cat === 'commercials' || cat === 'trailers') return 0;
+    if (cat === 'gameshows') return Math.floor(Math.random() * 61) + 45; // 45-105s (jump straight into gameplay, buzzers & prizes)
     if (cat === 'music') return Math.floor(Math.random() * 61) + 30; // 30-90s
     if (cat === 'cartoons' || cat === 'kids') return Math.floor(Math.random() * 156) + 45; // 45-200s
     if (cat === 'sports') return Math.floor(Math.random() * 241) + 60; // 60-300s
+    if (cat === 'comedy') return Math.floor(Math.random() * 121) + 45; // 45-165s
     return Math.floor(Math.random() * 181) + 60; // 60-240s
   }
 
@@ -441,24 +488,53 @@ class PlayerEngine {
 
     this.clearClipTimer();
 
+    // Advance virtual channel number to simulate human remote clicking
+    const isRapidSurfing = this.isZapClip || this.currentSessionType === 'browse_flurry';
+    this.advanceChannelNumber(isRapidSurfing);
+
     // Fast 140ms static during rapid browse flurries vs 240ms normal static
-    const staticDuration = this.isZapClip || this.currentSessionType === 'browse_flurry' ? 140 : 240;
+    const hadPreloaded = this.hasPreloadedForCurrentClip;
 
     effectsEngine.triggerChannelSwitch(staticDuration, () => {
       // 1. Swap active player container focus (brings already-running background player to front)
       this.toggleActivePlayerFocus();
 
+      // 1b. Pause outgoing player now that switch is complete to free hardware decoders
+      const outgoingPlayerId = this.activePlayerId === 'A' ? 'B' : 'A';
+      this.deliberatelyPaused[outgoingPlayerId] = true;
+      const outgoingPlayer = this.getInactivePlayer();
+      if (outgoingPlayer && typeof outgoingPlayer.pauseVideo === 'function') {
+        try {
+          outgoingPlayer.pauseVideo();
+        } catch (e) {}
+      }
+
       // 2. Advance to the next live queue index
       this.currentIndex = this.findNextLiveIndex((this.currentIndex + 1) % this.queue.length);
       this.currentVideoItem = this.queue[this.currentIndex];
       this.cuedItems[this.activePlayerId] = this.currentVideoItem;
+      this.deliberatelyPaused[this.activePlayerId] = false;
       this.lastAdvanceAt = Date.now();
 
       // 3. Set cutoff duration for this newly active video
-      const { maxDurationSec } = this.calculateSmartClip(this.currentVideoItem);
+      const { startSec, maxDurationSec } = this.calculateSmartClip(this.currentVideoItem);
       this.activeCutoffSec = maxDurationSec;
       this.elapsedSeconds = 0;
       this.hasPreloadedForCurrentClip = false;
+
+      // 3b. Fallback: If incoming player was not preloaded, load it directly now
+      const activePlayer = this.getActivePlayer();
+      if (!hadPreloaded && activePlayer && typeof activePlayer.loadVideoById === 'function') {
+        try {
+          if (typeof activePlayer.mute === 'function') activePlayer.mute();
+          activePlayer.loadVideoById({
+            videoId: this.currentVideoItem.videoId,
+            startSeconds: startSec
+          });
+        } catch (e) {
+          console.warn("Direct loadVideoById fallback error:", e);
+        }
+      }
 
       // 4. Update OSD green HUD display
       this.updateOSD(this.currentVideoItem);
@@ -466,8 +542,8 @@ class PlayerEngine {
       // 5. Start clip timing monitor
       this.startClipTimer();
 
-      // 6. If clip is ultra-short (<= 5s), preload next video immediately
-      if (this.activeCutoffSec <= 5) {
+      // 6. If clip is short (<= 8s), preload next video immediately
+      if (this.activeCutoffSec <= 8) {
         this.hasPreloadedForCurrentClip = true;
         this.preloadNext();
       }
@@ -505,14 +581,16 @@ class PlayerEngine {
     if (event.data === 0 && playerId === this.activePlayerId) {
       this.nextVideo();
     }
-    // YT.PlayerState.PAUSED = 2: If the active video was unexpectedly paused, resume immediately
-    if (event.data === 2 && playerId === this.activePlayerId) {
-      try {
-        const player = this.getActivePlayer();
-        if (player && typeof player.playVideo === 'function') {
-          player.playVideo();
-        }
-      } catch (e) {}
+    // YT.PlayerState.PAUSED = 2: If any video is unexpectedly paused (not the deliberately paused outgoing player), resume immediately
+    if (event.data === 2) {
+      if (!this.deliberatelyPaused[playerId]) {
+        try {
+          const player = playerId === 'A' ? this.playerA : this.playerB;
+          if (player && typeof player.playVideo === 'function') {
+            player.playVideo();
+          }
+        } catch (e) {}
+      }
     }
   }
 
@@ -614,9 +692,9 @@ class PlayerEngine {
         }
       } catch (e) {}
 
-      // JIT background pre-loading: start background player 6s before channel switch
+      // JIT background pre-loading: start background player 7s before channel switch
       // so YouTube's 5.0-second startup bezel expires 100% in the dark!
-      const leadTime = 6;
+      const leadTime = 7;
       if (this.elapsedSeconds >= Math.max(1, this.activeCutoffSec - leadTime) && !this.hasPreloadedForCurrentClip) {
         this.hasPreloadedForCurrentClip = true;
         this.preloadNext();
@@ -660,18 +738,29 @@ class PlayerEngine {
 
     const catLabel = document.getElementById('osd-category-label');
     const channelLabel = document.getElementById('osd-channel-label');
+    const eraBadge = document.getElementById('osd-era-badge');
 
-    const chNum = admin ? admin.getChannelNum(admin.currentChannelId) : '03';
+    const chNum = this.getChannelNumberString();
+    const category = (videoItem?.category || 'RETRO TV').toUpperCase();
+    const decade = videoItem?.decade || '1990s';
 
     if (osdMode === 'vcr-watermark') {
-      if (channelLabel) channelLabel.textContent = 'BNSD TV';
+      if (channelLabel) channelLabel.textContent = `CH ${chNum} • BNSD TV`;
     } else {
       if (channelLabel) channelLabel.textContent = `CH ${chNum} • BNSD TV`;
     }
 
     if (catLabel) {
-      catLabel.textContent = (videoItem?.category || 'RETRO TV').toUpperCase();
+      catLabel.textContent = category;
     }
+    if (eraBadge) {
+      eraBadge.textContent = decade;
+    }
+
+    // Trigger glowing CRT channel popup flash animation
+    hud.classList.remove('channel-popping');
+    void hud.offsetWidth; // Force reflow to restart CSS animation
+    hud.classList.add('channel-popping');
   }
 
   updatePacingRules(commercialMax, generalMax, randomOffset, pacingMode = 'channel-surfer', zapBurstEnabled = true) {

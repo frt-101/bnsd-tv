@@ -12,6 +12,10 @@ class EffectsEngine {
     this.contrast = 75;
     this.brightness = 110;
     this.opacity = 90;
+
+    // Pre-allocated noise frame cache for smooth, low-CPU CRT glitches
+    this.noiseFrames = [];
+    this.noiseFrameIndex = 0;
   }
 
   init() {
@@ -20,8 +24,12 @@ class EffectsEngine {
 
     this.ctx = this.canvas.getContext('2d');
     this.resizeCanvas();
+    this.initNoiseCache();
 
-    window.addEventListener('resize', () => this.resizeCanvas());
+    window.addEventListener('resize', () => {
+      this.resizeCanvas();
+      this.initNoiseCache();
+    });
   }
 
   resizeCanvas() {
@@ -31,25 +39,42 @@ class EffectsEngine {
   }
 
   /**
-   * Render noise frame on canvas
+   * Pre-render a pool of authentic CRT static noise frames
+   * to eliminate memory allocation and CPU load during 60fps rendering.
+   */
+  initNoiseCache() {
+    if (!this.ctx || !this.canvas) return;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    if (w <= 0 || h <= 0) return;
+
+    this.noiseFrames = [];
+    this.noiseFrameIndex = 0;
+    const numFrames = 8;
+
+    for (let f = 0; f < numFrames; f++) {
+      const imgData = this.ctx.createImageData(w, h);
+      const buffer = new Uint32Array(imgData.data.buffer);
+      const len = buffer.length;
+      for (let i = 0; i < len; i++) {
+        const color = Math.floor(Math.random() * 255);
+        buffer[i] = (255 << 24) | (color << 16) | (color << 8) | color;
+      }
+      this.noiseFrames.push(imgData);
+    }
+  }
+
+  /**
+   * Render noise frame on canvas by cycling pre-computed buffers
    */
   renderNoiseFrame() {
     if (!this.ctx || !this.isStaticActive) return;
 
-    const w = this.canvas.width;
-    const h = this.canvas.height;
-    const imgData = this.ctx.createImageData(w, h);
-    const buffer = new Uint32Array(imgData.data.buffer);
-
-    const len = buffer.length;
-    for (let i = 0; i < len; i++) {
-      // Generate random white/gray static noise pixel
-      const color = Math.floor(Math.random() * 255);
-      // Format 0xAABBGGRR
-      buffer[i] = (255 << 24) | (color << 16) | (color << 8) | color;
+    if (this.noiseFrames.length > 0) {
+      const frame = this.noiseFrames[this.noiseFrameIndex];
+      this.ctx.putImageData(frame, 0, 0);
+      this.noiseFrameIndex = (this.noiseFrameIndex + 1) % this.noiseFrames.length;
     }
-
-    this.ctx.putImageData(imgData, 0, 0);
 
     if (this.isStaticActive) {
       this.animationFrameId = requestAnimationFrame(() => this.renderNoiseFrame());

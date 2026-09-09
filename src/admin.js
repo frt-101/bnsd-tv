@@ -5,7 +5,7 @@ import { saveChannelConfig } from './firebase.js';
 
 class AdminController {
   constructor() {
-    this.currentChannelId = 'projector-bar';
+    this.currentChannelId = 'bnsdtv1';
     this.enabledDecades = ['1980s', '1990s', '2000s'];
     this.enabledCategories = [];
     this.pacingMode = 'channel-surfer';
@@ -22,15 +22,40 @@ class AdminController {
     this.washoutEnabled = true;
     this.osdMode = localStorage.getItem('bnsd_osd_mode') || 'crt-header';
     this.tvFrameEnabled = localStorage.getItem('bnsd_tv_frame') === 'true';
+    this.isEmbedMode = false;
   }
 
-  init() {
-    window.adminController = this;
-    this.bindEvents();
-    this.renderDecadeGrid();
-    this.renderCategoryGrid();
+  loadChannelConfig(channelId) {
+    this.currentChannelId = channelId || this.currentChannelId;
+    try {
+      const raw = localStorage.getItem(`bnsd_channel_${this.currentChannelId}`);
+      if (raw) {
+        const config = JSON.parse(raw);
+        if (Array.isArray(config.enabledDecades) && config.enabledDecades.length > 0) {
+          this.enabledDecades = config.enabledDecades;
+        }
+        if (Array.isArray(config.enabledCategories)) {
+          this.enabledCategories = config.enabledCategories;
+        }
+        if (config.pacingMode) this.pacingMode = config.pacingMode;
+        if (config.zapBurstEnabled !== undefined) this.zapBurstEnabled = config.zapBurstEnabled;
+        if (config.commercialMaxSec !== undefined) this.commercialMaxSec = parseInt(config.commercialMaxSec, 10);
+        if (config.generalClipMaxSec !== undefined) this.generalClipMaxSec = parseInt(config.generalClipMaxSec, 10);
+        if (config.randomOffsetEnabled !== undefined) this.randomOffsetEnabled = Boolean(config.randomOffsetEnabled);
+        if (config.contrast !== undefined) this.contrast = parseInt(config.contrast, 10);
+        if (config.brightness !== undefined) this.brightness = parseInt(config.brightness, 10);
+        if (config.opacity !== undefined) this.opacity = parseInt(config.opacity, 10);
+        if (config.scanlinesEnabled !== undefined) this.scanlinesEnabled = Boolean(config.scanlinesEnabled);
+        if (config.staticFXEnabled !== undefined) this.staticFXEnabled = Boolean(config.staticFXEnabled);
+        if (config.washoutEnabled !== undefined) this.washoutEnabled = Boolean(config.washoutEnabled);
+        if (config.osdMode) this.osdMode = config.osdMode;
+      }
+    } catch (e) {
+      console.warn("Could not load channel config from localStorage:", e);
+    }
+  }
 
-    // Set initial values
+  syncFormFields() {
     const selectChannel = document.getElementById('select-channel');
     if (selectChannel) selectChannel.value = this.currentChannelId;
 
@@ -53,7 +78,53 @@ class AdminController {
     if (selectOsdMode) selectOsdMode.value = this.osdMode;
 
     const chkTvFrame = document.getElementById('chk-enable-tv-frame');
-    if (chkTvFrame) chkTvFrame.checked = document.body.classList.contains('trinitron-mode');
+    if (chkTvFrame) chkTvFrame.checked = this.tvFrameEnabled;
+
+    const chkWashout = document.getElementById('chk-enable-washout');
+    if (chkWashout) chkWashout.checked = this.washoutEnabled;
+
+    const chkScanlines = document.getElementById('chk-enable-scanlines');
+    if (chkScanlines) chkScanlines.checked = this.scanlinesEnabled;
+
+    const chkStatic = document.getElementById('chk-enable-static-fx');
+    if (chkStatic) chkStatic.checked = this.staticFXEnabled;
+
+    const rangeContrast = document.getElementById('range-contrast');
+    const valContrast = document.getElementById('val-contrast');
+    if (rangeContrast) rangeContrast.value = this.contrast;
+    if (valContrast) valContrast.textContent = this.contrast;
+
+    const rangeBrightness = document.getElementById('range-brightness');
+    const valBrightness = document.getElementById('val-brightness');
+    if (rangeBrightness) rangeBrightness.value = this.brightness;
+    if (valBrightness) valBrightness.textContent = this.brightness;
+
+    const rangeOpacity = document.getElementById('range-opacity');
+    const valOpacity = document.getElementById('val-opacity');
+    if (rangeOpacity) rangeOpacity.value = this.opacity;
+    if (valOpacity) valOpacity.textContent = this.opacity;
+  }
+
+  init() {
+    window.adminController = this;
+    this.loadChannelConfig(this.currentChannelId);
+    this.bindEvents();
+    this.syncFormFields();
+    this.renderDecadeGrid();
+    this.renderCategoryGrid();
+
+    // Apply visual effects and pacing rules
+    effectsEngine.updateWashoutSettings(this.contrast, this.brightness, this.opacity, this.washoutEnabled);
+    effectsEngine.toggleScanlines(this.scanlinesEnabled);
+    effectsEngine.staticFXEnabled = this.staticFXEnabled;
+
+    playerEngine.updatePacingRules(
+      this.commercialMaxSec,
+      this.generalClipMaxSec,
+      this.randomOffsetEnabled,
+      this.pacingMode,
+      this.zapBurstEnabled
+    );
   }
 
   bindEvents() {
@@ -82,21 +153,8 @@ class AdminController {
       });
     });
 
-    // Keyboard Shortcuts (N = Next, O = OSD, W = Washout, A = Admin).
-    // No on-screen equivalents by design — see the button-free note above.
-    window.addEventListener('keydown', (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-
-      if (e.key === 'n' || e.key === 'N') playerEngine.nextVideo();
-      if (e.key === 'o' || e.key === 'O') document.getElementById('osd-hud')?.classList.toggle('hidden');
-      if (e.key === 'w' || e.key === 'W') {
-        this.washoutEnabled = !this.washoutEnabled;
-        const chkWashout = document.getElementById('chk-enable-washout');
-        if (chkWashout) chkWashout.checked = this.washoutEnabled;
-        effectsEngine.updateWashoutSettings(this.contrast, this.brightness, this.opacity, this.washoutEnabled);
-      }
-      if (e.key === 'a' || e.key === 'A') modal?.classList.toggle('hidden');
-    });
+    // Note: Manual keyboard listeners removed for unattended kiosk operation.
+    // Admin drawer remains accessible via ?admin=true parameter.
 
     // Range Sliders Input Sync
     this.bindRange('range-contrast', 'val-contrast', (val) => {
@@ -246,6 +304,10 @@ class AdminController {
     // Channel Selection Dropdown Change
     document.getElementById('select-channel')?.addEventListener('change', (e) => {
       this.currentChannelId = e.target.value;
+      this.loadChannelConfig(this.currentChannelId);
+      this.syncFormFields();
+      this.renderDecadeGrid();
+      this.renderCategoryGrid();
       document.getElementById('tel-channel-id').textContent = this.currentChannelId;
       document.getElementById('osd-channel-label').textContent = `CH ${this.getChannelNum(this.currentChannelId)} • BNSD TV`;
       this.applyAndRefreshStream();
@@ -326,12 +388,12 @@ class AdminController {
     }
   }
 
-  getChannelNum(str) {
-    if (str.includes('bar')) return '01';
-    if (str.includes('dining')) return '02';
-    if (str.includes('lounge')) return '03';
-    if (str.includes('patio')) return '04';
-    return '05';
+  getChannelNum(str = '') {
+    const s = String(str).toLowerCase();
+    if (s.includes('2') || s.includes('dining')) return '02';
+    if (s.includes('3') || s.includes('lounge')) return '03';
+    if (s.includes('4') || s.includes('patio')) return '04';
+    return '01';
   }
 
   renderDecadeGrid() {
@@ -490,12 +552,32 @@ class AdminController {
 
     saveChannelConfig(this.currentChannelId, configData);
 
+    // Save button visual feedback
+    const btnSave = document.getElementById('btn-save-settings');
+    if (btnSave) {
+      const originalText = btnSave.textContent;
+      btnSave.textContent = '✓ Settings Saved & Synced Live!';
+      btnSave.style.background = 'linear-gradient(135deg, #00ff66 0%, #00cc55 100%)';
+      btnSave.style.color = '#000000';
+      btnSave.style.boxShadow = '0 0 20px rgba(0, 255, 102, 0.6)';
+      setTimeout(() => {
+        btnSave.textContent = originalText;
+        btnSave.style.background = '';
+        btnSave.style.color = '';
+        btnSave.style.boxShadow = '';
+      }, 2400);
+    }
+
     // Generate new desynchronized channel queue filtered by decades AND categories
     const queue = catalogManager.generateChannelQueue(this.currentChannelId, this.enabledCategories, this.enabledDecades);
-    document.getElementById('tel-queue-count').textContent = `${queue.length.toLocaleString()} videos`;
-    document.getElementById('tel-channel-id').textContent = this.currentChannelId;
+    const countEl = document.getElementById('tel-queue-count');
+    if (countEl) countEl.textContent = `${queue.length.toLocaleString()} videos`;
+    const idEl = document.getElementById('tel-channel-id');
+    if (idEl) idEl.textContent = this.currentChannelId;
 
-    playerEngine.startStream(queue, 0);
+    if (!this.isEmbedMode) {
+      playerEngine.startStream(queue, 0);
+    }
   }
 }
 

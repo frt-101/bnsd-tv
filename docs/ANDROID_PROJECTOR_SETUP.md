@@ -13,10 +13,10 @@ Install **FreeKiosk** from the Google Play Store (`com.freekiosk`) or by sideloa
 
 ### Step A: Set Mode & Start URL
 1. Open FreeKiosk on the projector and set the display **Mode** to **WebView**.
-2. Set the **Start URL** to your deployed BNSD TV URL with the projector's channel identifier:
-   - For Bar Projector: `https://bnsd-tv.web.app/?channel=projector-bar`
-   - For Dining Projector: `https://bnsd-tv.web.app/?channel=projector-dining`
-   - For Lounge Projector: `https://bnsd-tv.web.app/?channel=projector-lounge`
+2. Set the **Start URL** to your deployed BNSD TV URL:
+   - For Screen 1: `https://bnsd-tv.web.app/?channel=bnsdtv1`
+   - For Screen 2: `https://bnsd-tv.web.app/?channel=bnsdtv2`
+   - Or simple unified stream: `https://bnsd-tv.web.app/`
 
 ---
 

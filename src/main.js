@@ -20,13 +20,19 @@ async function bootstrapApp() {
 
   // 2. Parse URL Parameters
   const urlParams = new URLSearchParams(window.location.search);
-  const channelParam = urlParams.get('channel') || 'projector-bar';
+  const channelParam = urlParams.get('channel') || 'bnsdtv1';
   const openAdminParam = urlParams.get('admin');
+  const isEmbedMode = openAdminParam === 'embed' || urlParams.get('embed') === 'true';
   const tvParam = urlParams.get('tv') || urlParams.get('frame') || urlParams.get('mode') || urlParams.get('theme');
+
+  if (isEmbedMode) {
+    document.body.classList.add('admin-embed-mode');
+    adminController.isEmbedMode = true;
+  }
 
   const isTvMode = tvParam === 'true' || tvParam === 'trinitron' || tvParam === 'red' || (localStorage.getItem('bnsd_tv_frame') === 'true');
   adminController.tvFrameEnabled = isTvMode;
-  document.body.classList.toggle('trinitron-mode', isTvMode);
+  document.body.classList.toggle('trinitron-mode', isTvMode && !isEmbedMode);
 
   adminController.currentChannelId = channelParam;
   const selectChannel = document.getElementById('select-channel');
@@ -48,9 +54,14 @@ async function bootstrapApp() {
   // 4. Initialize Admin Controller & Categories Grid
   adminController.init();
 
-  // If ?admin=true in URL, open modal automatically
-  if (openAdminParam === 'true') {
+  // If ?admin=true or ?admin=embed in URL, open modal automatically
+  if (openAdminParam === 'true' || isEmbedMode) {
     document.getElementById('admin-modal')?.classList.remove('hidden');
+  }
+
+  if (isEmbedMode) {
+    console.log("Running in REBA embedded admin mode. Video player stream suspended.");
+    return;
   }
 
   // 5. Subscribe to Firestore / LocalStorage real-time channel updates
