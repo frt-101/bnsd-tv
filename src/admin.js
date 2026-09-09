@@ -286,6 +286,13 @@ class AdminController {
         vid = match[1];
       }
 
+      // Security Check: Validate YouTube Video ID format (11 base64url characters)
+      const ytIdRegex = /^[a-zA-Z0-9_-]{11}$/;
+      if (!ytIdRegex.test(vid)) {
+        alert('Invalid YouTube Video ID or URL format. Please enter a valid 11-character video ID or YouTube URL.');
+        return;
+      }
+
       const testItem = {
         id: 99999,
         videoId: vid,
