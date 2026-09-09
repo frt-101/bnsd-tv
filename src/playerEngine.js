@@ -11,6 +11,7 @@ class PlayerEngine {
     this.queue = [];
     this.currentIndex = 0;
     this.consecutiveErrorCount = 0;
+    this.isTransitioning = false;
 
     // Watchdog support: timestamp of the last successful channel change, and
     // the pending autoplay-retry timer for whatever's currently loading.
@@ -233,55 +234,6 @@ class PlayerEngine {
       this.preloadNext();
     }
 
-    this.startClipTimer();
-  }
-
-  /**
-   * Play current video on active player, and preload next video on inactive player
-   */
-  playCurrentVideo() {
-    if (!this.queue || this.queue.length === 0) return;
-
-    // Skip over any videos flagged dead since this index was queued
-    this.currentIndex = this.findNextLiveIndex(this.currentIndex);
-
-    this.currentVideoItem = this.queue[this.currentIndex];
-    this.cuedItems[this.activePlayerId] = this.currentVideoItem;
-    this.deliberatelyPaused[this.activePlayerId] = false;
-    this.lastAdvanceAt = Date.now();
-    const activePlayer = this.getActivePlayer();
-
-    // Determine smart clip duration and start offset
-    const { startSec, maxDurationSec } = this.calculateSmartClip(this.currentVideoItem);
-    this.activeCutoffSec = maxDurationSec;
-    this.elapsedSeconds = 0;
-    this.hasPreloadedForCurrentClip = false;
-
-    // Load active video on active player purely via API
-    if (activePlayer && typeof activePlayer.loadVideoById === 'function') {
-      try {
-        if (typeof activePlayer.mute === 'function') {
-          activePlayer.mute();
-        }
-        activePlayer.loadVideoById({
-          videoId: this.currentVideoItem.videoId,
-          startSeconds: startSec
-        });
-      } catch (e) {
-        console.warn("loadVideoById error:", e);
-      }
-    }
-
-    // Update OSD green HUD display
-    this.updateOSD(this.currentVideoItem);
-
-    // If initial clip is short (<= 8s), preload next video immediately
-    if (this.activeCutoffSec <= 8) {
-      this.hasPreloadedForCurrentClip = true;
-      this.preloadNext();
-    }
-
-    // Start clip timing monitor
     this.startClipTimer();
   }
 
@@ -511,6 +463,14 @@ class PlayerEngine {
   nextVideo() {
     if (!this.queue || this.queue.length === 0) return;
 
+    // Guard against two overlapping calls (e.g. the natural "ended" event and
+    // the clip-cutoff timer firing within the same tick): without this, the
+    // second call's effectsEngine.triggerChannelSwitch() cancels the first
+    // call's still-pending peak timeout, so the first call's swap/preload/OSD
+    // update silently never runs.
+    if (this.isTransitioning) return;
+    this.isTransitioning = true;
+
     this.clearClipTimer();
 
     // Advance virtual channel number to simulate human remote clicking
@@ -521,7 +481,21 @@ class PlayerEngine {
     const staticDuration = isRapidSurfing ? 140 : 240;
     const hadPreloaded = this.hasPreloadedForCurrentClip;
 
+    // If the clip ended before the JIT preloader ever got a chance to fire
+    // (e.g. a video that runs out sooner than its calculated cutoff), kick
+    // off the load on the hidden inactive player right now instead of
+    // waiting for the static transition's midpoint. That's the difference
+    // between ~7s of hidden buffering time (the normal preloaded path) and
+    // ~100ms -- which is exactly what let YouTube's own loading/pause UI
+    // flash through once the static cleared.
+    if (!hadPreloaded) {
+      this.hasPreloadedForCurrentClip = true;
+      this.preloadNext();
+    }
+
     effectsEngine.triggerChannelSwitch(staticDuration, () => {
+      this.isTransitioning = false;
+
       // 1. Swap active player container focus (brings already-running background player to front)
       this.toggleActivePlayerFocus();
 
@@ -543,24 +517,10 @@ class PlayerEngine {
       this.lastAdvanceAt = Date.now();
 
       // 3. Set cutoff duration for this newly active video
-      const { startSec, maxDurationSec } = this.calculateSmartClip(this.currentVideoItem);
+      const { maxDurationSec } = this.calculateSmartClip(this.currentVideoItem);
       this.activeCutoffSec = maxDurationSec;
       this.elapsedSeconds = 0;
       this.hasPreloadedForCurrentClip = false;
-
-      // 3b. Fallback: If incoming player was not preloaded, load it directly now
-      const activePlayer = this.getActivePlayer();
-      if (!hadPreloaded && activePlayer && typeof activePlayer.loadVideoById === 'function') {
-        try {
-          if (typeof activePlayer.mute === 'function') activePlayer.mute();
-          activePlayer.loadVideoById({
-            videoId: this.currentVideoItem.videoId,
-            startSeconds: startSec
-          });
-        } catch (e) {
-          console.warn("Direct loadVideoById fallback error:", e);
-        }
-      }
 
       // 4. Update OSD green HUD display
       this.updateOSD(this.currentVideoItem);
@@ -669,13 +629,19 @@ class PlayerEngine {
     this.consecutiveErrorCount++;
     console.warn(`Active player error (${reason}): ${erroredItem?.videoId || 'unknown'}. Consecutive error count: ${this.consecutiveErrorCount}`);
 
-    // If 3 consecutive errors occur, fast-forward 5 live steps ahead in queue without static glitch
+    // If 3 consecutive errors occur, fast-forward 5 live steps ahead in the queue.
+    // Route this through the normal nextVideo() hidden-preload + static-covered
+    // reveal (by pre-seeding currentIndex one before the target and preloading
+    // it now) instead of a raw loadVideoById on the visible player, so this
+    // recovery jump doesn't flash YouTube's own loading/pause UI on screen.
     if (this.consecutiveErrorCount >= 3) {
       console.warn("Multiple consecutive video errors. Fast-forwarding queue...");
       this.consecutiveErrorCount = 0;
-      this.currentIndex = this.findNextLiveIndex((this.currentIndex + 5) % this.queue.length);
-      this.toggleActivePlayerFocus();
-      this.playCurrentVideo();
+      const targetIndex = this.findNextLiveIndex((this.currentIndex + 5) % this.queue.length);
+      this.currentIndex = (targetIndex - 1 + this.queue.length) % this.queue.length;
+      this.hasPreloadedForCurrentClip = true;
+      this.preloadNext();
+      this.nextVideo();
       return;
     }
 
