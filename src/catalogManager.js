@@ -128,11 +128,17 @@ class CatalogManager {
         const category = categories[row[2]] || 'Commercials';
         const videoId = row[3];
 
+        const catName = category.toUpperCase();
+        const decadeName = decade.toUpperCase();
+
+        // Pre-compute catUpper and decadeUpper to avoid redundant string allocations in loops
         const item = {
           id: idx + 1,
           decade,
           year,
           category,
+          catUpper: catName,
+          decadeUpper: decadeName,
           videoId,
           title: `${category} (${year})`,
           startSec: 0,
@@ -141,7 +147,6 @@ class CatalogManager {
 
         this.allVideos.push(item);
 
-        const catName = category.toUpperCase();
         let catList = this.categoriesMap.get(catName);
         if (!catList) {
           catList = [];
@@ -149,7 +154,6 @@ class CatalogManager {
         }
         catList.push(item);
 
-        const decadeName = decade.toUpperCase();
         let decList = this.decadesMap.get(decadeName);
         if (!decList) {
           decList = [];
@@ -163,11 +167,18 @@ class CatalogManager {
         const videoId = row.video_id ? row.video_id.trim() : null;
         if (!videoId) return;
 
+        const category = row.channel ? row.channel.trim() : 'Commercials';
+        const decade = row.decade ? row.decade.trim() : '1990s';
+        const catName = category.toUpperCase();
+        const decadeName = decade.toUpperCase();
+
         const item = {
           id: idx + 1,
-          decade: row.decade ? row.decade.trim() : '1990s',
+          decade,
           year: row.year ? row.year.trim() : '1995',
-          category: row.channel ? row.channel.trim() : 'Commercials',
+          category,
+          catUpper: catName,
+          decadeUpper: decadeName,
           videoId: videoId,
           title: row.title ? row.title.trim() : `${row.channel || 'Video'} (${row.year || row.decade || 'Retro'})`,
           startSec: parseInt(row.start_seconds) || 0,
@@ -176,7 +187,6 @@ class CatalogManager {
 
         this.allVideos.push(item);
 
-        const catName = item.category.toUpperCase();
         let catList = this.categoriesMap.get(catName);
         if (!catList) {
           catList = [];
@@ -184,7 +194,6 @@ class CatalogManager {
         }
         catList.push(item);
 
-        const decadeName = item.decade.toUpperCase();
         let decList = this.decadesMap.get(decadeName);
         if (!decList) {
           decList = [];
@@ -226,11 +235,16 @@ class CatalogManager {
       const startSec = row.start_seconds ? parseInt(row.start_seconds, 10) : 0;
       const endSec = row.end_seconds ? parseInt(row.end_seconds, 10) : 0;
 
+      const catUpper = category.toUpperCase();
+      const decUpper = decade.toUpperCase();
+
       const item = {
         id: idx + 1,
         videoId,
         category,
         decade,
+        catUpper,
+        decadeUpper: decUpper,
         year,
         title,
         startSec: isNaN(startSec) ? 0 : startSec,
@@ -239,13 +253,11 @@ class CatalogManager {
 
       this.allVideos.push(item);
 
-      const catUpper = category.toUpperCase();
       if (!this.categoriesMap.has(catUpper)) {
         this.categoriesMap.set(catUpper, []);
       }
       this.categoriesMap.get(catUpper).push(item);
 
-      const decUpper = decade.toUpperCase();
       if (!this.decadesMap.has(decUpper)) {
         this.decadesMap.set(decUpper, []);
       }
@@ -280,9 +292,19 @@ class CatalogManager {
 
     const list = [];
     for (const [name, items] of this.categoriesMap.entries()) {
-      const activeCount = allowedDecades 
-        ? items.filter(v => allowedDecades.has(String(v.decade).toUpperCase())).length 
-        : items.length;
+      // Bolt Optimization: Count active items directly using pre-computed decadeUpper
+      // to avoid allocating filtered temporary arrays across 138,000+ items.
+      let activeCount = 0;
+      if (allowedDecades) {
+        const len = items.length;
+        for (let i = 0; i < len; i++) {
+          if (allowedDecades.has(items[i].decadeUpper)) {
+            activeCount++;
+          }
+        }
+      } else {
+        activeCount = items.length;
+      }
 
       // Use properly capitalized category name from the first item
       const displayName = items[0]?.category || name;
@@ -312,10 +334,11 @@ class CatalogManager {
     const decadeList = enabledDecades.length > 0 ? enabledDecades : Array.from(this.decadesMap.keys());
     const allowedDecades = new Set(decadeList.map(d => String(d).toUpperCase()));
 
-    // Filter videos by enabled categories, enabled decades, AND exclude dead flagged videos
+    // Bolt Optimization: Filter pool using pre-computed catUpper and decadeUpper
+    // properties to avoid ~277,000 string allocations per queue generation over 138,000+ items.
     const pool = this.allVideos.filter(item => 
-      allowedCats.has(String(item.category).toUpperCase()) &&
-      allowedDecades.has(String(item.decade).toUpperCase()) &&
+      allowedCats.has(item.catUpper) &&
+      allowedDecades.has(item.decadeUpper) &&
       !this.deadVideoIds.has(item.videoId)
     );
 
