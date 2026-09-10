@@ -39,8 +39,8 @@ class AdminController {
         }
         if (config.pacingMode) this.pacingMode = config.pacingMode;
         if (config.zapBurstEnabled !== undefined) this.zapBurstEnabled = config.zapBurstEnabled;
-        if (config.commercialMaxSec !== undefined) this.commercialMaxSec = parseInt(config.commercialMaxSec, 10);
-        if (config.generalClipMaxSec !== undefined) this.generalClipMaxSec = parseInt(config.generalClipMaxSec, 10);
+        if (config.commercialMaxSec !== undefined) this.commercialMaxSec = this.sanitizeDuration(config.commercialMaxSec, 30, 5, 600);
+        if (config.generalClipMaxSec !== undefined) this.generalClipMaxSec = this.sanitizeDuration(config.generalClipMaxSec, 60, 5, 600);
         if (config.randomOffsetEnabled !== undefined) this.randomOffsetEnabled = Boolean(config.randomOffsetEnabled);
         if (config.contrast !== undefined) this.contrast = parseInt(config.contrast, 10);
         if (config.brightness !== undefined) this.brightness = parseInt(config.brightness, 10);
@@ -286,6 +286,13 @@ class AdminController {
         vid = match[1];
       }
 
+      // Security validation: ensure YouTube Video ID matches strict 11-char format
+      const YOUTUBE_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
+      if (!YOUTUBE_ID_REGEX.test(vid)) {
+        alert('Invalid YouTube Video ID or URL format. Please provide a valid 11-character video ID.');
+        return;
+      }
+
       const testItem = {
         id: 99999,
         videoId: vid,
@@ -359,6 +366,12 @@ class AdminController {
 
       this.updateDeadCountUI();
     };
+  }
+
+  sanitizeDuration(val, defaultVal = 30, minSec = 5, maxSec = 600) {
+    const parsed = parseInt(val, 10);
+    if (isNaN(parsed)) return defaultVal;
+    return Math.min(Math.max(parsed, minSec), maxSec);
   }
 
   syncDecadeSelection() {
@@ -519,8 +532,8 @@ class AdminController {
 
     if (pacingSelect) this.pacingMode = pacingSelect.value;
     if (zapChk) this.zapBurstEnabled = zapChk.checked;
-    if (commInput) this.commercialMaxSec = parseInt(commInput.value, 10) || 30;
-    if (genInput) this.generalClipMaxSec = parseInt(genInput.value, 10) || 60;
+    if (commInput) this.commercialMaxSec = this.sanitizeDuration(commInput.value, 30, 5, 600);
+    if (genInput) this.generalClipMaxSec = this.sanitizeDuration(genInput.value, 60, 5, 600);
     if (offsetChk) this.randomOffsetEnabled = offsetChk.checked;
 
     playerEngine.updatePacingRules(
