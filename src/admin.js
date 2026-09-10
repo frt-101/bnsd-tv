@@ -39,8 +39,8 @@ class AdminController {
         }
         if (config.pacingMode) this.pacingMode = config.pacingMode;
         if (config.zapBurstEnabled !== undefined) this.zapBurstEnabled = config.zapBurstEnabled;
-        if (config.commercialMaxSec !== undefined) this.commercialMaxSec = parseInt(config.commercialMaxSec, 10);
-        if (config.generalClipMaxSec !== undefined) this.generalClipMaxSec = parseInt(config.generalClipMaxSec, 10);
+        if (config.commercialMaxSec !== undefined) this.commercialMaxSec = this.sanitizeDuration(config.commercialMaxSec, 30, 8, 600);
+        if (config.generalClipMaxSec !== undefined) this.generalClipMaxSec = this.sanitizeDuration(config.generalClipMaxSec, 60, 8, 600);
         if (config.randomOffsetEnabled !== undefined) this.randomOffsetEnabled = Boolean(config.randomOffsetEnabled);
         if (config.contrast !== undefined) this.contrast = parseInt(config.contrast, 10);
         if (config.brightness !== undefined) this.brightness = parseInt(config.brightness, 10);
@@ -281,10 +281,19 @@ class AdminController {
       if (!val) return;
 
       let vid = val;
-      const match = val.match(/(?:[?&]v=|\/embed\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+      const match = val.match(/(?:[?&]v=|\/embed\/|\/v\/|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
       if (match && match[1]) {
         vid = match[1];
       }
+
+      // Strict 11-char YouTube Video ID validation (non-blocking for kiosks)
+      const YOUTUBE_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
+      if (!YOUTUBE_ID_REGEX.test(vid)) {
+        console.warn(`[Admin] Rejected invalid YouTube Video ID: "${vid}"`);
+        if (input) input.style.borderColor = '#ff4444';
+        return;
+      }
+      if (input) input.style.borderColor = '';
 
       const testItem = {
         id: 99999,
@@ -359,6 +368,12 @@ class AdminController {
 
       this.updateDeadCountUI();
     };
+  }
+
+  sanitizeDuration(val, defaultVal = 30, minSec = 8, maxSec = 600) {
+    const parsed = parseInt(val, 10);
+    if (isNaN(parsed)) return defaultVal;
+    return Math.min(Math.max(parsed, minSec), maxSec);
   }
 
   syncDecadeSelection() {
@@ -519,8 +534,8 @@ class AdminController {
 
     if (pacingSelect) this.pacingMode = pacingSelect.value;
     if (zapChk) this.zapBurstEnabled = zapChk.checked;
-    if (commInput) this.commercialMaxSec = parseInt(commInput.value, 10) || 30;
-    if (genInput) this.generalClipMaxSec = parseInt(genInput.value, 10) || 60;
+    if (commInput) this.commercialMaxSec = this.sanitizeDuration(commInput.value, 30, 8, 600);
+    if (genInput) this.generalClipMaxSec = this.sanitizeDuration(genInput.value, 60, 8, 600);
     if (offsetChk) this.randomOffsetEnabled = offsetChk.checked;
 
     playerEngine.updatePacingRules(
