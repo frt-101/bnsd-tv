@@ -590,6 +590,23 @@ html, body {
   border-color: var(--accent-color);
 }
 
+.form-control:focus-visible,
+.btn-primary:focus-visible,
+.btn-sm:focus-visible,
+.tab-btn:focus-visible,
+.btn-close:focus-visible,
+.btn-ctrl:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+.decade-card:focus-within,
+.cat-card:focus-within {
+  border-color: var(--accent-color);
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
 .form-range {
   width: 100%;
   accent-color: var(--accent-color);

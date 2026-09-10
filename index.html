@@ -76,25 +76,25 @@
     </div>
 
     <!-- Admin Panel Modal / Drawer (Accessible via ?admin=true or pressing 'A' on keyboard) -->
-    <div id="admin-modal" class="modal-backdrop hidden">
+    <div id="admin-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
       <div class="modal-card">
         <div class="modal-header">
-          <h2>BNSD TV — Control Center</h2>
-          <button id="btn-close-admin" class="btn-close">&times;</button>
+          <h2 id="admin-modal-title">BNSD TV — Control Center</h2>
+          <button id="btn-close-admin" class="btn-close" aria-label="Close admin control center" title="Close admin control center">&times;</button>
         </div>
         
-        <div class="modal-tabs">
-          <button class="tab-btn active" data-tab="tab-channels">Projector Channels</button>
-          <button class="tab-btn" data-tab="tab-categories">Decades & Categories</button>
-          <button class="tab-btn" data-tab="tab-pacing">Pacing & Clip Rules</button>
-          <button class="tab-btn" data-tab="tab-vibe">Projection & CRT Vibe</button>
-          <button class="tab-btn" data-tab="tab-catalog">Catalog & CSV</button>
+        <div class="modal-tabs" role="tablist" aria-label="Control Center Sections">
+          <button class="tab-btn active" id="tab-btn-channels" data-tab="tab-channels" role="tab" aria-selected="true" aria-controls="tab-channels">Projector Channels</button>
+          <button class="tab-btn" id="tab-btn-categories" data-tab="tab-categories" role="tab" aria-selected="false" aria-controls="tab-categories">Decades & Categories</button>
+          <button class="tab-btn" id="tab-btn-pacing" data-tab="tab-pacing" role="tab" aria-selected="false" aria-controls="tab-pacing">Pacing & Clip Rules</button>
+          <button class="tab-btn" id="tab-btn-vibe" data-tab="tab-vibe" role="tab" aria-selected="false" aria-controls="tab-vibe">Projection & CRT Vibe</button>
+          <button class="tab-btn" id="tab-btn-catalog" data-tab="tab-catalog" role="tab" aria-selected="false" aria-controls="tab-catalog">Catalog & CSV</button>
         </div>
 
         <div class="modal-body">
           
           <!-- TAB 1: Projector Channels -->
-          <div id="tab-channels" class="tab-content active">
+          <div id="tab-channels" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-channels">
             <div class="form-group">
               <label for="select-channel">Current Projector Channel Preset:</label>
               <select id="select-channel" class="form-control">
@@ -126,7 +126,7 @@
           </div>
 
           <!-- TAB 2: Decades & Categories Filter -->
-          <div id="tab-categories" class="tab-content">
+          <div id="tab-categories" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-categories">
             <!-- Section 1: Decades Filter -->
             <div class="filter-section-header">
               <h3>Retro Decades & Eras</h3>
@@ -161,7 +161,7 @@
           </div>
 
           <!-- TAB 3: Pacing & Clip Rules -->
-          <div id="tab-pacing" class="tab-content">
+          <div id="tab-pacing" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-pacing">
             <p class="section-desc">Configure visual pacing tailored for silent projection. Videos stay lively and active with smart seek jumps that skip slow MTV title cards and spoken intros, dropping right into the visual action.</p>
 
             <div class="form-group">
@@ -206,7 +206,7 @@
           </div>
 
           <!-- TAB 4: Projection & CRT Vibe -->
-          <div id="tab-vibe" class="tab-content">
+          <div id="tab-vibe" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-vibe">
             <p class="section-desc">Tune the visual aesthetic so BNSD TV looks like authentic vintage wall art projected inside your restaurant.</p>
 
             <div class="form-group">
@@ -270,7 +270,7 @@
           </div>
 
           <!-- TAB 5: Catalog & CSV -->
-          <div id="tab-catalog" class="tab-content">
+          <div id="tab-catalog" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-catalog">
             <div class="catalog-info-card">
               <h3>Active Catalog Dataset</h3>
               <p>Loaded File: <strong>BNSD TV PLAYLIST (bnsd_tv_playlist.csv)</strong></p>
