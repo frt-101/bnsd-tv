@@ -79,7 +79,9 @@ class CatalogManager {
   exportDeadVideosCSV() {
     let csv = "video_id,flagged_at\n";
     this.deadVideoIds.forEach(id => {
-      csv += `"${id}","${new Date().toISOString()}"\n`;
+      // Escape double-quotes to prevent CSV injection / format breakages
+      const escapedId = String(id).replace(/"/g, '""');
+      csv += `"${escapedId}","${new Date().toISOString()}"\n`;
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
