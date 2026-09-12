@@ -139,18 +139,29 @@ class AdminController {
       btnClose.addEventListener('click', () => modal.classList.add('hidden'));
     }
 
-    // Tab Navigation
+    // Tab Navigation with Accessibility ARIA update
     const tabs = document.querySelectorAll('.tab-btn');
     tabs.forEach(tab => {
       tab.addEventListener('click', (e) => {
         const targetTab = e.target.getAttribute('data-tab');
-        tabs.forEach(t => t.classList.remove('active'));
+        tabs.forEach(t => {
+          t.classList.remove('active');
+          t.setAttribute('aria-selected', 'false');
+        });
         document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
 
         e.target.classList.add('active');
+        e.target.setAttribute('aria-selected', 'true');
         const content = document.getElementById(targetTab);
         if (content) content.classList.add('active');
       });
+    });
+
+    // Close admin modal on Escape key press
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+        modal.classList.add('hidden');
+      }
     });
 
     // Note: Manual keyboard listeners removed for unattended kiosk operation.
