@@ -123,6 +123,10 @@ class CatalogManager {
       const total = streams.length;
       for (let idx = 0; idx < total; idx++) {
         const row = streams[idx];
+        const decade = decades[row[0]] || '1990s';
+        const year = String(row[1]);
+        const category = categories[row[2]] || 'RETRO TV';
+        const videoId = row[3];
         const catName = category.toUpperCase();
         const decadeName = decade.toUpperCase();
 
