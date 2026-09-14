@@ -20,7 +20,7 @@ class AdminController {
     this.scanlinesEnabled = true;
     this.staticFXEnabled = true;
     this.washoutEnabled = true;
-    this.osdMode = localStorage.getItem('bnsd_osd_mode') || 'crt-header';
+    this.osdMode = this.sanitizeOsdMode(localStorage.getItem('bnsd_osd_mode'));
     this.tvFrameEnabled = localStorage.getItem('bnsd_tv_frame') === 'true';
     this.isEmbedMode = false;
   }
@@ -37,7 +37,7 @@ class AdminController {
         if (Array.isArray(config.enabledCategories)) {
           this.enabledCategories = config.enabledCategories;
         }
-        if (config.pacingMode) this.pacingMode = config.pacingMode;
+        if (config.pacingMode) this.pacingMode = this.sanitizePacingMode(config.pacingMode);
         if (config.zapBurstEnabled !== undefined) this.zapBurstEnabled = config.zapBurstEnabled;
         if (config.commercialMaxSec !== undefined) this.commercialMaxSec = this.sanitizeDuration(config.commercialMaxSec, 30, 8, 600);
         if (config.generalClipMaxSec !== undefined) this.generalClipMaxSec = this.sanitizeDuration(config.generalClipMaxSec, 60, 8, 600);
@@ -48,7 +48,7 @@ class AdminController {
         if (config.scanlinesEnabled !== undefined) this.scanlinesEnabled = Boolean(config.scanlinesEnabled);
         if (config.staticFXEnabled !== undefined) this.staticFXEnabled = Boolean(config.staticFXEnabled);
         if (config.washoutEnabled !== undefined) this.washoutEnabled = Boolean(config.washoutEnabled);
-        if (config.osdMode) this.osdMode = config.osdMode;
+        if (config.osdMode) this.osdMode = this.sanitizeOsdMode(config.osdMode);
       }
     } catch (e) {
       console.warn("Could not load channel config from localStorage:", e);
@@ -189,7 +189,7 @@ class AdminController {
     });
 
     document.getElementById('select-osd-mode')?.addEventListener('change', (e) => {
-      this.osdMode = e.target.value;
+      this.osdMode = this.sanitizeOsdMode(e.target.value);
       localStorage.setItem('bnsd_osd_mode', this.osdMode);
       if (playerEngine.currentVideoItem) {
         playerEngine.updateOSD(playerEngine.currentVideoItem);
@@ -204,7 +204,7 @@ class AdminController {
 
     // Pacing Mode Preset Quick Switcher
     document.getElementById('select-pacing-mode')?.addEventListener('change', (e) => {
-      this.pacingMode = e.target.value;
+      this.pacingMode = this.sanitizePacingMode(e.target.value);
       const commInput = document.getElementById('input-commercial-max');
       const genInput = document.getElementById('input-general-clip-max');
       if (this.pacingMode === 'channel-surfer') {
@@ -370,6 +370,17 @@ class AdminController {
     };
   }
 
+  // Input validation: sanitize untrusted enum parameters from LocalStorage or user input
+  sanitizeOsdMode(val, defaultVal = 'crt-header') {
+    const ALLOWED_OSD_MODES = ['crt-header', 'vcr-watermark', 'full-info', 'hidden'];
+    return ALLOWED_OSD_MODES.includes(val) ? val : defaultVal;
+  }
+
+  sanitizePacingMode(val, defaultVal = 'channel-surfer') {
+    const ALLOWED_PACING_MODES = ['channel-surfer', 'balanced', 'deep-cuts'];
+    return ALLOWED_PACING_MODES.includes(val) ? val : defaultVal;
+  }
+
   sanitizeDuration(val, defaultVal = 30, minSec = 8, maxSec = 600) {
     const parsed = parseInt(val, 10);
     if (isNaN(parsed)) return defaultVal;
@@ -532,7 +543,7 @@ class AdminController {
     const genInput = document.getElementById('input-general-clip-max');
     const offsetChk = document.getElementById('chk-random-offset');
 
-    if (pacingSelect) this.pacingMode = pacingSelect.value;
+    if (pacingSelect) this.pacingMode = this.sanitizePacingMode(pacingSelect.value);
     if (zapChk) this.zapBurstEnabled = zapChk.checked;
     if (commInput) this.commercialMaxSec = this.sanitizeDuration(commInput.value, 30, 8, 600);
     if (genInput) this.generalClipMaxSec = this.sanitizeDuration(genInput.value, 60, 8, 600);
