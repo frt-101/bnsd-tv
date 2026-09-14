@@ -123,6 +123,10 @@ class CatalogManager {
       const total = streams.length;
       for (let idx = 0; idx < total; idx++) {
         const row = streams[idx];
+        const decade = decades[row[0]] || '1990s';
+        const year = String(row[1]);
+        const category = categories[row[2]] || 'Commercials';
+        const videoId = row[3];
         const catName = category.toUpperCase();
         const decadeName = decade.toUpperCase();
 
@@ -221,6 +225,13 @@ class CatalogManager {
     parsed.data.forEach((row, idx) => {
       const videoId = row.video_id ? row.video_id.trim() : null;
       if (!videoId) return;
+
+      const category = row.channel ? row.channel.trim() : 'Commercials';
+      const decade = row.decade ? row.decade.trim() : '1990s';
+      const year = row.year ? row.year.trim() : '1995';
+      const startSec = parseInt(row.start_seconds) || 0;
+      const endSec = parseInt(row.end_seconds) || 0;
+      const title = row.title ? row.title.trim() : `${category} (${year})`;
 
       const catUpper = category.toUpperCase();
       const decUpper = decade.toUpperCase();
@@ -359,43 +370,65 @@ class CatalogManager {
       return byCategory.get(availableCats[0]);
     }
 
-    // Interleave across categories to prevent clustering and duplicate back-to-back categories
+    // Bolt Optimization: Interleave across categories using a zero-allocation loop
+    // to avoid creating hundreds of thousands of temporary filter arrays on large catalog queues.
+    const categoryBuckets = [];
+    for (const [catKey, list] of byCategory.entries()) {
+      categoryBuckets.push({ catKey, list });
+    }
+
+    const numCats = categoryBuckets.length;
     const interleaved = [];
-    let lastCat = null;
+    let lastCatIdx = -1;
     let totalRemaining = pool.length;
 
     while (totalRemaining > 0) {
-      // Find categories with remaining items that are NOT the last played category
-      const eligible = availableCats.filter(c => c !== lastCat && byCategory.get(c).length > 0);
+      let totalWeight = 0;
+      let eligibleCount = 0;
+      let fallbackIdx = -1;
 
-      let chosenCat = null;
-      if (eligible.length > 0) {
-        // Weighted random selection based on remaining items in eligible buckets
-        let totalWeight = 0;
-        for (let i = 0; i < eligible.length; i++) {
-          totalWeight += byCategory.get(eligible[i]).length;
-        }
-
-        let rand = Math.random() * totalWeight;
-        for (let i = 0; i < eligible.length; i++) {
-          const c = eligible[i];
-          rand -= byCategory.get(c).length;
-          if (rand <= 0) {
-            chosenCat = c;
-            break;
+      for (let i = 0; i < numCats; i++) {
+        const len = categoryBuckets[i].list.length;
+        if (len > 0) {
+          if (i !== lastCatIdx) {
+            totalWeight += len;
+            eligibleCount++;
           }
+          if (fallbackIdx === -1) fallbackIdx = i;
         }
-        if (!chosenCat) chosenCat = eligible[0];
-      } else {
-        // Fallback if only one category still has items
-        const remainingWithItems = availableCats.filter(c => byCategory.get(c).length > 0);
-        if (remainingWithItems.length === 0) break;
-        chosenCat = remainingWithItems[0];
       }
 
-      const item = byCategory.get(chosenCat).pop();
+      let chosenCatIdx = -1;
+      if (eligibleCount > 0) {
+        let rand = Math.random() * totalWeight;
+        for (let i = 0; i < numCats; i++) {
+          if (i === lastCatIdx) continue;
+          const len = categoryBuckets[i].list.length;
+          if (len > 0) {
+            rand -= len;
+            if (rand <= 0) {
+              chosenCatIdx = i;
+              break;
+            }
+          }
+        }
+        if (chosenCatIdx === -1) {
+          for (let i = 0; i < numCats; i++) {
+            if (i !== lastCatIdx && categoryBuckets[i].list.length > 0) {
+              chosenCatIdx = i;
+              break;
+            }
+          }
+        }
+      } else {
+        chosenCatIdx = fallbackIdx;
+      }
+
+      if (chosenCatIdx === -1) break;
+
+      const item = categoryBuckets[chosenCatIdx].list.pop();
       interleaved.push(item);
-      lastCat = chosenCat;
+      lastCatIdx = chosenCatIdx;
       totalRemaining--;
     }
 
