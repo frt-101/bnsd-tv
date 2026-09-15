@@ -123,13 +123,16 @@ class CatalogManager {
       const total = streams.length;
       for (let idx = 0; idx < total; idx++) {
         const row = streams[idx];
+        const [decIdx, year, catIdx, videoId] = row;
+        const decade = decades[decIdx] || '1990s';
+        const category = categories[catIdx] || 'Commercials';
         const catName = category.toUpperCase();
         const decadeName = decade.toUpperCase();
 
         const item = {
           id: idx + 1,
           decade,
-          year,
+          year: String(year),
           category,
           catUpper: catName,
           decadeUpper: decadeName,
@@ -221,6 +224,13 @@ class CatalogManager {
     parsed.data.forEach((row, idx) => {
       const videoId = row.video_id ? row.video_id.trim() : null;
       if (!videoId) return;
+
+      const category = row.channel ? row.channel.trim() : 'Commercials';
+      const decade = row.decade ? row.decade.trim() : '1990s';
+      const year = row.year ? row.year.trim() : '1995';
+      const title = row.title ? row.title.trim() : `${category} (${year})`;
+      const startSec = parseInt(row.start_seconds, 10);
+      const endSec = parseInt(row.end_seconds, 10);
 
       const catUpper = category.toUpperCase();
       const decUpper = decade.toUpperCase();

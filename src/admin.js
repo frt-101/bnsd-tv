@@ -139,6 +139,13 @@ class AdminController {
       btnClose.addEventListener('click', () => modal.classList.add('hidden'));
     }
 
+    // Close modal on Escape key press
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+        modal.classList.add('hidden');
+      }
+    });
+
     // Tab Navigation
     const tabs = document.querySelectorAll('.tab-btn');
     tabs.forEach(tab => {
