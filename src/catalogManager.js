@@ -69,18 +69,34 @@ class CatalogManager {
   clearDeadVideoFlags() {
     this.deadVideoIds.clear();
     this.deadVideoDetails.clear();
-    localStorage.removeItem('bnsd_dead_video_ids');
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('bnsd_dead_video_ids');
+    }
     console.log("Cleared all dead video flags.");
+  }
+
+  /**
+   * Generate dead videos CSV string with Formula Injection protection
+   */
+  generateDeadVideosCSV() {
+    let csv = "video_id,flagged_at\n";
+    this.deadVideoIds.forEach(id => {
+      let safeId = String(id).replace(/"/g, '""');
+      // Prevent Formula Injection (CSV Injection) by prepending a single quote
+      // if value begins with formula trigger characters (=, +, -, @, tab, CR)
+      if (/^[=+@\-\t\r]/.test(safeId)) {
+        safeId = "'" + safeId;
+      }
+      csv += `"${safeId}","${new Date().toISOString()}"\n`;
+    });
+    return csv;
   }
 
   /**
    * Export dead videos list to downloadable CSV
    */
   exportDeadVideosCSV() {
-    let csv = "video_id,flagged_at\n";
-    this.deadVideoIds.forEach(id => {
-      csv += `"${id}","${new Date().toISOString()}"\n`;
-    });
+    const csv = this.generateDeadVideosCSV();
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -123,6 +139,11 @@ class CatalogManager {
       const total = streams.length;
       for (let idx = 0; idx < total; idx++) {
         const row = streams[idx];
+        const [decIdx, yearVal, catIdx, vid] = Array.isArray(row) ? row : [];
+        const decade = (decades && decades[decIdx]) ? decades[decIdx] : '1990s';
+        const category = (categories && categories[catIdx]) ? categories[catIdx] : 'Commercials';
+        const year = yearVal ? String(yearVal) : '1995';
+        const videoId = vid || '';
         const catName = category.toUpperCase();
         const decadeName = decade.toUpperCase();
 
@@ -221,6 +242,13 @@ class CatalogManager {
     parsed.data.forEach((row, idx) => {
       const videoId = row.video_id ? row.video_id.trim() : null;
       if (!videoId) return;
+
+      const category = row.channel ? row.channel.trim() : (row.category ? row.category.trim() : 'Commercials');
+      const decade = row.decade ? row.decade.trim() : '1990s';
+      const year = row.year ? row.year.trim() : '1995';
+      const title = row.title ? row.title.trim() : `${category} (${year})`;
+      const startSec = parseInt(row.start_seconds, 10);
+      const endSec = parseInt(row.end_seconds, 10);
 
       const catUpper = category.toUpperCase();
       const decUpper = decade.toUpperCase();
