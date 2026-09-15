@@ -123,6 +123,10 @@ class CatalogManager {
       const total = streams.length;
       for (let idx = 0; idx < total; idx++) {
         const row = streams[idx];
+        const decade = decades[row[0]] || '1990s';
+        const year = String(row[1] || '1995');
+        const category = categories[row[2]] || 'Commercials';
+        const videoId = row[3];
         const catName = category.toUpperCase();
         const decadeName = decade.toUpperCase();
 
@@ -221,6 +225,13 @@ class CatalogManager {
     parsed.data.forEach((row, idx) => {
       const videoId = row.video_id ? row.video_id.trim() : null;
       if (!videoId) return;
+
+      const category = row.channel ? row.channel.trim() : (row.category ? row.category.trim() : 'Commercials');
+      const decade = row.decade ? row.decade.trim() : '1990s';
+      const year = row.year ? row.year.trim() : '1995';
+      const title = row.title ? row.title.trim() : `${category} (${year})`;
+      const startSec = parseInt(row.start_seconds, 10) || 0;
+      const endSec = parseInt(row.end_seconds, 10) || 0;
 
       const catUpper = category.toUpperCase();
       const decUpper = decade.toUpperCase();
@@ -333,11 +344,12 @@ class CatalogManager {
 
     if (pool.length === 0) return [];
 
-    // Group items into category buckets
+    // Bolt Optimization: Group items into category buckets and track counts via indexed arrays
+    // to eliminate ~1.38M temporary array allocations and Map lookups across 138,000+ queue items.
     const byCategory = new Map();
     for (let i = 0; i < pool.length; i++) {
       const item = pool[i];
-      const catKey = (item.category || 'Other').toUpperCase();
+      const catKey = item.catUpper || (item.category || 'Other').toUpperCase();
       let bucket = byCategory.get(catKey);
       if (!bucket) {
         bucket = [];
@@ -347,56 +359,74 @@ class CatalogManager {
     }
 
     // Truly randomize (Fisher-Yates shuffle) inside each category bucket
+    const buckets = [];
     for (const [_, list] of byCategory.entries()) {
       for (let i = list.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [list[i], list[j]] = [list[j], list[i]];
       }
+      buckets.push(list);
     }
 
-    const availableCats = Array.from(byCategory.keys());
-    if (availableCats.length === 1) {
-      return byCategory.get(availableCats[0]);
+    if (buckets.length === 1) {
+      return buckets[0];
     }
 
-    // Interleave across categories to prevent clustering and duplicate back-to-back categories
-    const interleaved = [];
-    let lastCat = null;
-    let totalRemaining = pool.length;
+    const numBuckets = buckets.length;
+    const interleaved = new Array(pool.length);
+    let interleavedIdx = 0;
+    let lastBucketIdx = -1;
 
+    // Direct integer array tracking for remaining item counts
+    const remaining = new Int32Array(numBuckets);
+    let totalRemaining = 0;
+    for (let i = 0; i < numBuckets; i++) {
+      remaining[i] = buckets[i].length;
+      totalRemaining += remaining[i];
+    }
+
+    // Zero-allocation weighted random interleaving across category buckets
     while (totalRemaining > 0) {
-      // Find categories with remaining items that are NOT the last played category
-      const eligible = availableCats.filter(c => c !== lastCat && byCategory.get(c).length > 0);
-
-      let chosenCat = null;
-      if (eligible.length > 0) {
-        // Weighted random selection based on remaining items in eligible buckets
-        let totalWeight = 0;
-        for (let i = 0; i < eligible.length; i++) {
-          totalWeight += byCategory.get(eligible[i]).length;
+      let eligibleWeight = 0;
+      for (let i = 0; i < numBuckets; i++) {
+        if (i !== lastBucketIdx && remaining[i] > 0) {
+          eligibleWeight += remaining[i];
         }
+      }
 
-        let rand = Math.random() * totalWeight;
-        for (let i = 0; i < eligible.length; i++) {
-          const c = eligible[i];
-          rand -= byCategory.get(c).length;
-          if (rand <= 0) {
-            chosenCat = c;
+      let chosenBucketIdx = -1;
+      if (eligibleWeight > 0) {
+        let rand = Math.random() * eligibleWeight;
+        for (let i = 0; i < numBuckets; i++) {
+          if (i !== lastBucketIdx && remaining[i] > 0) {
+            rand -= remaining[i];
+            if (rand <= 0) {
+              chosenBucketIdx = i;
+              break;
+            }
+          }
+        }
+        if (chosenBucketIdx === -1) {
+          for (let i = 0; i < numBuckets; i++) {
+            if (i !== lastBucketIdx && remaining[i] > 0) {
+              chosenBucketIdx = i;
+              break;
+            }
+          }
+        }
+      } else {
+        for (let i = 0; i < numBuckets; i++) {
+          if (remaining[i] > 0) {
+            chosenBucketIdx = i;
             break;
           }
         }
-        if (!chosenCat) chosenCat = eligible[0];
-      } else {
-        // Fallback if only one category still has items
-        const remainingWithItems = availableCats.filter(c => byCategory.get(c).length > 0);
-        if (remainingWithItems.length === 0) break;
-        chosenCat = remainingWithItems[0];
       }
 
-      const item = byCategory.get(chosenCat).pop();
-      interleaved.push(item);
-      lastCat = chosenCat;
+      remaining[chosenBucketIdx]--;
       totalRemaining--;
+      interleaved[interleavedIdx++] = buckets[chosenBucketIdx].pop();
+      lastBucketIdx = chosenBucketIdx;
     }
 
     return interleaved;
