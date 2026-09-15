@@ -1,0 +1,3 @@
+## 2025-05-18 - Admin Modal Accessibility & Dialog Semantics
+**Learning:** Modals constructed as custom overlays often omit critical ARIA dialog attributes (`role="dialog"`, `aria-modal="true"`, `aria-labelledby`) and accessibility attributes on icon-only close buttons (`aria-label`), which makes them difficult to navigate for screen reader users and keyboard-only users without Escape key dismissal or focus indicators.
+**Action:** Always ensure modal overlays have proper ARIA dialog roles, accessible names on close buttons, focus-visible states on tab/close controls, and an Escape key keyboard handler.
