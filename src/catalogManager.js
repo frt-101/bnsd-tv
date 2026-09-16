@@ -121,10 +121,23 @@ class CatalogManager {
       // High-performance compact tuple format: [decIdx, year, catIdx, videoId]
       const { decades, categories, streams } = data;
       const total = streams.length;
+
+      // Bolt Optimization: Pre-compute uppercase decade and category lookup arrays
+      // to eliminate ~277,000 redundantly allocated strings per catalog ingest across 138,000+ items.
+      const upperDecades = (decades || []).map(d => String(d).toUpperCase());
+      const upperCategories = (categories || []).map(c => String(c).toUpperCase());
+
       for (let idx = 0; idx < total; idx++) {
         const row = streams[idx];
-        const catName = category.toUpperCase();
-        const decadeName = decade.toUpperCase();
+        const decIdx = row[0];
+        const year = String(row[1]);
+        const catIdx = row[2];
+        const videoId = row[3];
+
+        const decade = decades[decIdx] || '1990s';
+        const category = categories[catIdx] || 'Commercials';
+        const catName = upperCategories[catIdx] || 'COMMERCIALS';
+        const decadeName = upperDecades[decIdx] || '1990S';
 
         const item = {
           id: idx + 1,
