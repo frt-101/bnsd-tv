@@ -76,11 +76,11 @@
     </div>
 
     <!-- Admin Panel Modal / Drawer (Accessible via ?admin=true or pressing 'A' on keyboard) -->
-    <div id="admin-modal" class="modal-backdrop hidden">
+    <div id="admin-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="admin-dialog-title">
       <div class="modal-card">
         <div class="modal-header">
-          <h2>BNSD TV — Control Center</h2>
-          <button id="btn-close-admin" class="btn-close">&times;</button>
+          <h2 id="admin-dialog-title">BNSD TV — Control Center</h2>
+          <button id="btn-close-admin" class="btn-close" aria-label="Close Control Center">&times;</button>
         </div>
         
         <div class="modal-tabs">

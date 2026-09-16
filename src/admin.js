@@ -137,6 +137,14 @@ class AdminController {
 
     if (btnClose && modal) {
       btnClose.addEventListener('click', () => modal.classList.add('hidden'));
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.classList.add('hidden');
+      });
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+          modal.classList.add('hidden');
+        }
+      });
     }
 
     // Tab Navigation
