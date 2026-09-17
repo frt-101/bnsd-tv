@@ -74,12 +74,17 @@ class CatalogManager {
   }
 
   /**
-   * Export dead videos list to downloadable CSV
+   * Export dead videos list to downloadable CSV with CSV Formula Injection protection (CWE-1236)
    */
   exportDeadVideosCSV() {
     let csv = "video_id,flagged_at\n";
     this.deadVideoIds.forEach(id => {
-      csv += `"${id}","${new Date().toISOString()}"\n`;
+      // Escape double quotes and neutralize spreadsheet formula trigger characters (=, +, -, @, \t, \r)
+      let safeId = String(id).replace(/"/g, '""');
+      if (/^[=\+\-\@\t\r]/.test(safeId)) {
+        safeId = `'${safeId}`;
+      }
+      csv += `"${safeId}","${new Date().toISOString()}"\n`;
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
