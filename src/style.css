@@ -503,6 +503,15 @@ html, body {
   color: #fff;
 }
 
+.btn-close:focus-visible,
+.tab-btn:focus-visible,
+.btn-primary:focus-visible,
+.btn-sm:focus-visible,
+.form-control:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
 .modal-tabs {
   display: flex;
   gap: 4px;
