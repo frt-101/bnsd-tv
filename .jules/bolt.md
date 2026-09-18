@@ -1,0 +1,3 @@
+## 2025-05-18 - Compact Catalog Ingestion Tuple Destructuring & Zero-Allocation Queue Interleaving
+**Learning:** In large dataset applications (138,000+ items), destructuring compact tuples in pre-bundled datasets is essential to prevent runtime ReferenceErrors that trigger silent fallbacks to 1.5s+ HTTP CSV fetches and parses. Additionally, array methods like `.filter()` inside tight queue-generation loops allocated 270,000+ temporary arrays per operation; replacing them with indexed integer loops avoids GC spikes during queue initialization.
+**Action:** Always check bundled data tuple schemas before falling back to network parsers, and avoid array-allocating methods (`filter`, `map`) inside large dataset loop algorithms.
