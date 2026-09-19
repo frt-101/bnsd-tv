@@ -74,13 +74,30 @@ class CatalogManager {
   }
 
   /**
+   * Format dead videos list to CSV string with formula injection sanitization
+   */
+  formatDeadVideosCSV() {
+    let csv = "video_id,flagged_at\n";
+    this.deadVideoIds.forEach(id => {
+      let safeId = String(id).replace(/"/g, '""');
+      // Prevent CSV Formula Injection (CWE-1236) by prepending a single quote
+      // if the ID begins with formula execution characters (=, +, -, @, \t, \r)
+      if (/^[-=+\t\r@]/.test(safeId)) {
+        safeId = `'${safeId}`;
+      }
+      csv += `"${safeId}","${new Date().toISOString()}"\n`;
+    });
+    return csv;
+  }
+
+  /**
    * Export dead videos list to downloadable CSV
    */
   exportDeadVideosCSV() {
-    let csv = "video_id,flagged_at\n";
-    this.deadVideoIds.forEach(id => {
-      csv += `"${id}","${new Date().toISOString()}"\n`;
-    });
+    const csv = this.formatDeadVideosCSV();
+    if (typeof Blob === 'undefined' || typeof URL === 'undefined' || typeof document === 'undefined') {
+      return csv;
+    }
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -88,6 +105,7 @@ class CatalogManager {
     a.download = `bnsd_dead_videos_${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+    return csv;
   }
 
   /**
