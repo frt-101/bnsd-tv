@@ -139,15 +139,26 @@ class AdminController {
       btnClose.addEventListener('click', () => modal.classList.add('hidden'));
     }
 
+    // Close Modal on Escape key press
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+        modal.classList.add('hidden');
+      }
+    });
+
     // Tab Navigation
     const tabs = document.querySelectorAll('.tab-btn');
     tabs.forEach(tab => {
       tab.addEventListener('click', (e) => {
         const targetTab = e.target.getAttribute('data-tab');
-        tabs.forEach(t => t.classList.remove('active'));
+        tabs.forEach(t => {
+          t.classList.remove('active');
+          t.setAttribute('aria-selected', 'false');
+        });
         document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
 
         e.target.classList.add('active');
+        e.target.setAttribute('aria-selected', 'true');
         const content = document.getElementById(targetTab);
         if (content) content.classList.add('active');
       });
