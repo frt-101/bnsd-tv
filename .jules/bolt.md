@@ -1,0 +1,3 @@
+## 2026-08-21 - Zero-Allocation Category Interleaving in Large Catalog Shuffling
+**Learning:** Calling `.filter()` inside a `while (totalRemaining > 0)` shuffle loop across 100,000+ catalog items generates tens of thousands of temporary array allocations per queue generation, causing heavy garbage collection pressure. Converting Map entries into a pre-allocated array of bucket objects prior to the loop allows in-place bucket scanning with zero array allocations per iteration.
+**Action:** Avoid array methods like `.filter()` or `.map()` inside tight loops that execute thousands of times per operation; prefer pre-flattening buckets and scanning indices directly.
