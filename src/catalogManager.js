@@ -47,9 +47,11 @@ class CatalogManager {
    * Flag a video as dead (quarantine without deleting from original CSV)
    */
   markVideoDead(videoId, title = '') {
-    if (!videoId) return;
-    this.deadVideoIds.add(videoId);
-    this.deadVideoDetails.set(videoId, { videoId, title, timestamp: new Date().toISOString() });
+    if (!videoId || typeof videoId !== 'string') return;
+    const sanitizedId = videoId.trim();
+    if (!sanitizedId) return;
+    this.deadVideoIds.add(sanitizedId);
+    this.deadVideoDetails.set(sanitizedId, { videoId: sanitizedId, title, timestamp: new Date().toISOString() });
     this.saveDeadVideoFlags();
 
     // Remove from active in-memory catalog so it never plays again
@@ -69,7 +71,11 @@ class CatalogManager {
   clearDeadVideoFlags() {
     this.deadVideoIds.clear();
     this.deadVideoDetails.clear();
-    localStorage.removeItem('bnsd_dead_video_ids');
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.removeItem('bnsd_dead_video_ids');
+      } catch (e) {}
+    }
     console.log("Cleared all dead video flags.");
   }
 
@@ -79,7 +85,12 @@ class CatalogManager {
   exportDeadVideosCSV() {
     let csv = "video_id,flagged_at\n";
     this.deadVideoIds.forEach(id => {
-      csv += `"${id}","${new Date().toISOString()}"\n`;
+      // CWE-1236: Mitigate CSV Formula Injection by escaping quotes and prepending ' if formula triggers exist
+      let safeId = String(id).replace(/"/g, '""');
+      if (/^[=\+\-\@\t\r]/.test(safeId)) {
+        safeId = `'${safeId}`;
+      }
+      csv += `"${safeId}","${new Date().toISOString()}"\n`;
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
