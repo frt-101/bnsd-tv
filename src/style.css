@@ -497,9 +497,16 @@ html, body {
   line-height: 1;
   cursor: pointer;
   transition: color 0.2s ease;
+  border-radius: 4px;
 }
 
 .btn-close:hover {
+  color: #fff;
+}
+
+.btn-close:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
   color: #fff;
 }
 
@@ -532,6 +539,12 @@ html, body {
 .tab-btn.active {
   color: var(--accent-color);
   border-bottom-color: var(--accent-color);
+}
+
+.tab-btn:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: -2px;
+  border-radius: 4px;
 }
 
 .modal-body {
