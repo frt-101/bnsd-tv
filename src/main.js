@@ -20,7 +20,9 @@ async function bootstrapApp() {
 
   // 2. Parse URL Parameters
   const urlParams = new URLSearchParams(window.location.search);
-  const channelParam = urlParams.get('channel') || 'bnsdtv1';
+  const rawChannelParam = urlParams.get('channel') || 'bnsdtv1';
+  // Sanitize channel parameter to prevent path traversal in Firestore doc references and storage keys
+  const channelParam = rawChannelParam.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32) || 'bnsdtv1';
   const openAdminParam = urlParams.get('admin');
   const isEmbedMode = openAdminParam === 'embed' || urlParams.get('embed') === 'true';
   const tvParam = urlParams.get('tv') || urlParams.get('frame') || urlParams.get('mode') || urlParams.get('theme');
