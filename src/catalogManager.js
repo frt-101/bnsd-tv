@@ -120,11 +120,23 @@ class CatalogManager {
     if (data && Array.isArray(data.streams)) {
       // High-performance compact tuple format: [decIdx, year, catIdx, videoId]
       const { decades, categories, streams } = data;
+      // Bolt Optimization: Pre-compute upper-case lookups for categories and decades
+      // to avoid calling .toUpperCase() repeatedly during ingestion loop (~138,000+ items).
+      const categoriesUpper = categories.map(c => c.toUpperCase());
+      const decadesUpper = decades.map(d => d.toUpperCase());
       const total = streams.length;
+
       for (let idx = 0; idx < total; idx++) {
         const row = streams[idx];
-        const catName = category.toUpperCase();
-        const decadeName = decade.toUpperCase();
+        const decIdx = row[0];
+        const year = row[1];
+        const catIdx = row[2];
+        const videoId = row[3];
+
+        const decade = decades[decIdx];
+        const category = categories[catIdx];
+        const catName = categoriesUpper[catIdx];
+        const decadeName = decadesUpper[decIdx];
 
         const item = {
           id: idx + 1,
@@ -337,7 +349,8 @@ class CatalogManager {
     const byCategory = new Map();
     for (let i = 0; i < pool.length; i++) {
       const item = pool[i];
-      const catKey = (item.category || 'Other').toUpperCase();
+      // Bolt Optimization: Use pre-computed item.catUpper instead of calling .toUpperCase() on each pool item
+      const catKey = item.catUpper || 'OTHER';
       let bucket = byCategory.get(catKey);
       if (!bucket) {
         bucket = [];
