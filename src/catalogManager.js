@@ -69,7 +69,9 @@ class CatalogManager {
   clearDeadVideoFlags() {
     this.deadVideoIds.clear();
     this.deadVideoDetails.clear();
-    localStorage.removeItem('bnsd_dead_video_ids');
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('bnsd_dead_video_ids');
+    }
     console.log("Cleared all dead video flags.");
   }
 
@@ -113,16 +115,70 @@ class CatalogManager {
    * Ingest array or compact payload of video records directly
    */
   ingestArrayData(data) {
-    this.allVideos = [];
     this.categoriesMap.clear();
     this.decadesMap.clear();
 
     if (data && Array.isArray(data.streams)) {
       // High-performance compact tuple format: [decIdx, year, catIdx, videoId]
+      // Bolt Optimization: Pre-uppercase lookup arrays once to avoid ~277,000 .toUpperCase() allocations during 138k+ stream loop.
       const { decades, categories, streams } = data;
+      const decadesUpper = decades.map(d => String(d).toUpperCase());
+      const categoriesUpper = categories.map(c => String(c).toUpperCase());
+
       const total = streams.length;
+      this.allVideos = new Array(total);
+
       for (let idx = 0; idx < total; idx++) {
         const row = streams[idx];
+        const decIdx = row[0];
+        const year = String(row[1]);
+        const catIdx = row[2];
+        const videoId = row[3];
+
+        const decade = decades[decIdx];
+        const decadeUpper = decadesUpper[decIdx];
+        const category = categories[catIdx];
+        const catUpper = categoriesUpper[catIdx];
+
+        const item = {
+          id: idx + 1,
+          decade,
+          year,
+          category,
+          catUpper,
+          decadeUpper,
+          videoId,
+          title: `${category} (${year})`,
+          startSec: 0,
+          endSec: 0
+        };
+
+        this.allVideos[idx] = item;
+
+        let catList = this.categoriesMap.get(catUpper);
+        if (!catList) {
+          catList = [];
+          this.categoriesMap.set(catUpper, catList);
+        }
+        catList.push(item);
+
+        let decList = this.decadesMap.get(decadeUpper);
+        if (!decList) {
+          decList = [];
+          this.decadesMap.set(decadeUpper, decList);
+        }
+        decList.push(item);
+      }
+    } else if (Array.isArray(data)) {
+      // Standard object array fallback
+      this.allVideos = [];
+      data.forEach((row, idx) => {
+        const videoId = row.video_id ? row.video_id.trim() : null;
+        if (!videoId) return;
+
+        const category = row.channel ? row.channel.trim() : (row.category ? row.category.trim() : 'Commercials');
+        const decade = row.decade ? row.decade.trim() : '1990s';
+        const year = row.year ? String(row.year).trim() : '1995';
         const catName = category.toUpperCase();
         const decadeName = decade.toUpperCase();
 
@@ -133,50 +189,10 @@ class CatalogManager {
           category,
           catUpper: catName,
           decadeUpper: decadeName,
-          videoId,
-          title: `${category} (${year})`,
-          startSec: 0,
-          endSec: 0
-        };
-
-        this.allVideos.push(item);
-
-        let catList = this.categoriesMap.get(catName);
-        if (!catList) {
-          catList = [];
-          this.categoriesMap.set(catName, catList);
-        }
-        catList.push(item);
-
-        let decList = this.decadesMap.get(decadeName);
-        if (!decList) {
-          decList = [];
-          this.decadesMap.set(decadeName, decList);
-        }
-        decList.push(item);
-      }
-    } else if (Array.isArray(data)) {
-      // Standard object array fallback
-      data.forEach((row, idx) => {
-        const videoId = row.video_id ? row.video_id.trim() : null;
-        if (!videoId) return;
-
-        const category = row.channel ? row.channel.trim() : 'Commercials';
-        const decade = row.decade ? row.decade.trim() : '1990s';
-        const catName = category.toUpperCase();
-        const decadeName = decade.toUpperCase();
-
-        const item = {
-          id: idx + 1,
-          decade,
-          year: row.year ? row.year.trim() : '1995',
-          category,
-          catUpper: catName,
-          decadeUpper: decadeName,
           videoId: videoId,
-          title: row.title ? row.title.trim() : `${row.channel || 'Video'} (${row.year || row.decade || 'Retro'})`,
-          startSec: parseInt(row.start_seconds) || 0,
-          endSec: parseInt(row.end_seconds) || 0
+          title: row.title ? row.title.trim() : `${row.channel || row.category || 'Video'} (${year})`,
+          startSec: parseInt(row.start_seconds, 10) || 0,
+          endSec: parseInt(row.end_seconds, 10) || 0
         };
 
         this.allVideos.push(item);
@@ -221,6 +237,13 @@ class CatalogManager {
     parsed.data.forEach((row, idx) => {
       const videoId = row.video_id ? row.video_id.trim() : null;
       if (!videoId) return;
+
+      const category = row.channel ? row.channel.trim() : (row.category ? row.category.trim() : 'Commercials');
+      const decade = row.decade ? row.decade.trim() : '1990s';
+      const year = row.year ? String(row.year).trim() : '1995';
+      const title = row.title ? row.title.trim() : `${category} (${year})`;
+      const startSec = parseInt(row.start_seconds, 10) || 0;
+      const endSec = parseInt(row.end_seconds, 10) || 0;
 
       const catUpper = category.toUpperCase();
       const decUpper = decade.toUpperCase();
