@@ -590,6 +590,30 @@ html, body {
   border-color: var(--accent-color);
 }
 
+/* Keyboard Focus Indicators */
+button:focus-visible,
+.btn-close:focus-visible,
+.tab-btn:focus-visible,
+.btn-sm:focus-visible,
+.btn-primary:focus-visible,
+.btn-ctrl:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+.form-control:focus-visible,
+.form-range:focus-visible,
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+.decade-card:focus-within,
+.cat-card:focus-within {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
 .form-range {
   width: 100%;
   accent-color: var(--accent-color);
