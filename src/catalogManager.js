@@ -74,12 +74,29 @@ class CatalogManager {
   }
 
   /**
+   * Sanitize a field string for CSV export to prevent CSV Formula Injection (CWE-1236)
+   * and properly escape quotes.
+   */
+  sanitizeCSVField(field) {
+    if (field == null) return '""';
+    let str = String(field);
+    // Neutralize spreadsheet formula injection characters (=, +, -, @, tab, CR)
+    if (/^[=+\-@\t\r]/.test(str)) {
+      str = "'" + str;
+    }
+    // Escape double quotes and enclose in double quotes
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+
+  /**
    * Export dead videos list to downloadable CSV
    */
   exportDeadVideosCSV() {
     let csv = "video_id,flagged_at\n";
     this.deadVideoIds.forEach(id => {
-      csv += `"${id}","${new Date().toISOString()}"\n`;
+      const safeId = this.sanitizeCSVField(id);
+      const safeDate = this.sanitizeCSVField(new Date().toISOString());
+      csv += `${safeId},${safeDate}\n`;
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
