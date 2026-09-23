@@ -590,6 +590,22 @@ html, body {
   border-color: var(--accent-color);
 }
 
+/* Keyboard Accessibility Focus Visible Ring */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+.tab-btn:focus-visible,
+.btn-close:focus-visible,
+.btn-primary:focus-visible,
+.btn-sm:focus-visible,
+.btn-ctrl:focus-visible,
+.decade-card:focus-within,
+.cat-card:focus-within {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
 .form-range {
   width: 100%;
   accent-color: var(--accent-color);
