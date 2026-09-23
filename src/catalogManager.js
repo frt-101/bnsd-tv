@@ -69,7 +69,9 @@ class CatalogManager {
   clearDeadVideoFlags() {
     this.deadVideoIds.clear();
     this.deadVideoDetails.clear();
-    localStorage.removeItem('bnsd_dead_video_ids');
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('bnsd_dead_video_ids');
+    }
     console.log("Cleared all dead video flags.");
   }
 
@@ -117,14 +119,25 @@ class CatalogManager {
     this.categoriesMap.clear();
     this.decadesMap.clear();
 
+    // Strict 11-character base64url YouTube video ID regex
+    const YOUTUBE_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
+
     if (data && Array.isArray(data.streams)) {
       // High-performance compact tuple format: [decIdx, year, catIdx, videoId]
       const { decades, categories, streams } = data;
       const total = streams.length;
       for (let idx = 0; idx < total; idx++) {
         const row = streams[idx];
+        const [decIdx, yearVal, catIdx, videoId] = row;
+
+        // Security: validate YouTube Video ID to prevent iframe parameter manipulation or invalid IDs
+        if (!videoId || typeof videoId !== 'string' || !YOUTUBE_ID_REGEX.test(videoId)) continue;
+
+        const decade = decades[decIdx] || '1990s';
+        const category = categories[catIdx] || 'Commercials';
         const catName = category.toUpperCase();
         const decadeName = decade.toUpperCase();
+        const year = String(yearVal || '1995');
 
         const item = {
           id: idx + 1,
@@ -159,7 +172,9 @@ class CatalogManager {
       // Standard object array fallback
       data.forEach((row, idx) => {
         const videoId = row.video_id ? row.video_id.trim() : null;
-        if (!videoId) return;
+
+        // Security: validate YouTube Video ID
+        if (!videoId || !YOUTUBE_ID_REGEX.test(videoId)) return;
 
         const category = row.channel ? row.channel.trim() : 'Commercials';
         const decade = row.decade ? row.decade.trim() : '1990s';
@@ -169,14 +184,14 @@ class CatalogManager {
         const item = {
           id: idx + 1,
           decade,
-          year: row.year ? row.year.trim() : '1995',
+          year: row.year ? String(row.year).trim() : '1995',
           category,
           catUpper: catName,
           decadeUpper: decadeName,
-          videoId: videoId,
+          videoId,
           title: row.title ? row.title.trim() : `${row.channel || 'Video'} (${row.year || row.decade || 'Retro'})`,
-          startSec: parseInt(row.start_seconds) || 0,
-          endSec: parseInt(row.end_seconds) || 0
+          startSec: parseInt(row.start_seconds, 10) || 0,
+          endSec: parseInt(row.end_seconds, 10) || 0
         };
 
         this.allVideos.push(item);
@@ -218,9 +233,20 @@ class CatalogManager {
     this.categoriesMap.clear();
     this.decadesMap.clear();
 
+    const YOUTUBE_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
+
     parsed.data.forEach((row, idx) => {
       const videoId = row.video_id ? row.video_id.trim() : null;
-      if (!videoId) return;
+
+      // Security: validate YouTube Video ID to prevent iframe parameter manipulation
+      if (!videoId || !YOUTUBE_ID_REGEX.test(videoId)) return;
+
+      const category = row.channel ? row.channel.trim() : (row.category ? row.category.trim() : 'Commercials');
+      const decade = row.decade ? row.decade.trim() : '1990s';
+      const year = row.year ? String(row.year).trim() : '1995';
+      const title = row.title ? row.title.trim() : `${category} (${year})`;
+      const startSec = parseInt(row.start_seconds, 10);
+      const endSec = parseInt(row.end_seconds, 10);
 
       const catUpper = category.toUpperCase();
       const decUpper = decade.toUpperCase();
