@@ -117,12 +117,20 @@ class CatalogManager {
     this.categoriesMap.clear();
     this.decadesMap.clear();
 
+    const YOUTUBE_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
+
     if (data && Array.isArray(data.streams)) {
       // High-performance compact tuple format: [decIdx, year, catIdx, videoId]
       const { decades, categories, streams } = data;
       const total = streams.length;
       for (let idx = 0; idx < total; idx++) {
         const row = streams[idx];
+        const videoId = typeof row[3] === 'string' ? row[3].trim() : '';
+        if (!YOUTUBE_ID_REGEX.test(videoId)) continue;
+
+        const decade = decades[row[0]] || '1990s';
+        const year = String(row[1] || '1995');
+        const category = categories[row[2]] || 'Commercials';
         const catName = category.toUpperCase();
         const decadeName = decade.toUpperCase();
 
@@ -159,7 +167,7 @@ class CatalogManager {
       // Standard object array fallback
       data.forEach((row, idx) => {
         const videoId = row.video_id ? row.video_id.trim() : null;
-        if (!videoId) return;
+        if (!videoId || !YOUTUBE_ID_REGEX.test(videoId)) return;
 
         const category = row.channel ? row.channel.trim() : 'Commercials';
         const decade = row.decade ? row.decade.trim() : '1990s';
@@ -175,8 +183,8 @@ class CatalogManager {
           decadeUpper: decadeName,
           videoId: videoId,
           title: row.title ? row.title.trim() : `${row.channel || 'Video'} (${row.year || row.decade || 'Retro'})`,
-          startSec: parseInt(row.start_seconds) || 0,
-          endSec: parseInt(row.end_seconds) || 0
+          startSec: parseInt(row.start_seconds, 10) || 0,
+          endSec: parseInt(row.end_seconds, 10) || 0
         };
 
         this.allVideos.push(item);
@@ -218,10 +226,20 @@ class CatalogManager {
     this.categoriesMap.clear();
     this.decadesMap.clear();
 
+    const YOUTUBE_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
+
     parsed.data.forEach((row, idx) => {
       const videoId = row.video_id ? row.video_id.trim() : null;
-      if (!videoId) return;
+      if (!videoId || !YOUTUBE_ID_REGEX.test(videoId)) return;
 
+      const category = row.channel ? row.channel.trim() : 'Commercials';
+      const decade = row.decade ? row.decade.trim() : '1990s';
+      const year = row.year ? row.year.trim() : '1995';
+      const title = row.title ? row.title.trim() : `${category} (${year})`;
+      const rawStartSec = parseInt(row.start_seconds, 10);
+      const rawEndSec = parseInt(row.end_seconds, 10);
+      const startSec = isNaN(rawStartSec) || rawStartSec < 0 ? 0 : rawStartSec;
+      const endSec = isNaN(rawEndSec) || rawEndSec < 0 ? 0 : rawEndSec;
       const catUpper = category.toUpperCase();
       const decUpper = decade.toUpperCase();
 
@@ -234,8 +252,8 @@ class CatalogManager {
         decadeUpper: decUpper,
         year,
         title,
-        startSec: isNaN(startSec) ? 0 : startSec,
-        endSec: isNaN(endSec) ? 0 : endSec
+        startSec,
+        endSec
       };
 
       this.allVideos.push(item);
