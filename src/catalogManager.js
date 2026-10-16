@@ -126,6 +126,10 @@ class CatalogManager {
         const catName = category.toUpperCase();
         const decadeName = decade.toUpperCase();
 
+        const catName = category.toUpperCase();
+        const decadeName = decade.toUpperCase();
+
+        // Pre-compute catUpper and decadeUpper to avoid redundant string allocations in loops
         const item = {
           id: idx + 1,
           decade,
@@ -221,6 +225,9 @@ class CatalogManager {
     parsed.data.forEach((row, idx) => {
       const videoId = row.video_id ? row.video_id.trim() : null;
       if (!videoId) return;
+
+      const catUpper = category.toUpperCase();
+      const decUpper = decade.toUpperCase();
 
       const catUpper = category.toUpperCase();
       const decUpper = decade.toUpperCase();
