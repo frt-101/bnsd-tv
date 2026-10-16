@@ -34,17 +34,28 @@ if (isPlaceholderConfig) {
 export { db, isFirebaseConnected };
 
 /**
+ * Helper to sanitize channelId strings to prevent key/path injection
+ */
+function sanitizeChannelId(channelId) {
+  if (typeof channelId !== 'string') return 'bnsdtv1';
+  const sanitized = channelId.replace(/[^a-zA-Z0-9_-]/g, '');
+  return sanitized.length > 0 ? sanitized : 'bnsdtv1';
+}
+
+/**
  * Save channel state (categories, clip durations, visual FX) to Firestore or LocalStorage
  */
 export async function saveChannelConfig(channelId, configData) {
+  const safeChannelId = sanitizeChannelId(channelId);
+  const safeConfig = (configData && typeof configData === 'object') ? configData : {};
   const payload = {
-    ...configData,
+    ...safeConfig,
     updatedAt: new Date().toISOString()
   };
 
   // Save to LocalStorage for instant reliable fallback
   try {
-    localStorage.setItem(`bnsd_channel_${channelId}`, JSON.stringify(payload));
+    localStorage.setItem(`bnsd_channel_${safeChannelId}`, JSON.stringify(payload));
   } catch (e) {
     console.warn("LocalStorage write error:", e);
   }
@@ -52,7 +63,7 @@ export async function saveChannelConfig(channelId, configData) {
   // Save to Firestore if available
   if (isFirebaseConnected && db) {
     try {
-      const channelRef = doc(db, 'channels', channelId);
+      const channelRef = doc(db, 'channels', safeChannelId);
       await setDoc(channelRef, payload, { merge: true });
     } catch (err) {
       console.warn("Firestore write error, using LocalStorage fallback:", err);
@@ -64,9 +75,11 @@ export async function saveChannelConfig(channelId, configData) {
  * Listen for real-time channel updates from Firestore or LocalStorage
  */
 export function subscribeChannelConfig(channelId, callback) {
+  const safeChannelId = sanitizeChannelId(channelId);
+
   // Load initial local config
   try {
-    const localRaw = localStorage.getItem(`bnsd_channel_${channelId}`);
+    const localRaw = localStorage.getItem(`bnsd_channel_${safeChannelId}`);
     if (localRaw) {
       callback(JSON.parse(localRaw));
     }
@@ -75,12 +88,12 @@ export function subscribeChannelConfig(channelId, callback) {
   // Listen to Firestore real-time doc
   if (isFirebaseConnected && db) {
     try {
-      const channelRef = doc(db, 'channels', channelId);
+      const channelRef = doc(db, 'channels', safeChannelId);
       return onSnapshot(channelRef, (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           try {
-            localStorage.setItem(`bnsd_channel_${channelId}`, JSON.stringify(data));
+            localStorage.setItem(`bnsd_channel_${safeChannelId}`, JSON.stringify(data));
           } catch (e) {}
           callback(data);
         }
