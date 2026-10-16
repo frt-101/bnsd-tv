@@ -818,22 +818,27 @@ class PlayerEngine {
     const catLabel = document.getElementById('osd-category-label');
     const channelLabel = document.getElementById('osd-channel-label');
     const eraBadge = document.getElementById('osd-era-badge');
+    const titleLabel = document.getElementById('osd-title-label');
 
     const chNum = this.getChannelNumberString();
     const category = (videoItem?.category || 'RETRO TV').toUpperCase();
     const decade = videoItem?.decade || '1990s';
+    const title = videoItem?.title || '';
 
     if (osdMode === 'vcr-watermark') {
-      if (channelLabel) channelLabel.textContent = `CH ${chNum} • BNSD TV`;
+      if (channelLabel) channelLabel.textContent = 'BNSD TV';
+      if (eraBadge) eraBadge.textContent = 'PLAY ►';
     } else {
       if (channelLabel) channelLabel.textContent = `CH ${chNum} • BNSD TV`;
+      if (eraBadge) eraBadge.textContent = decade;
     }
 
     if (catLabel) {
       catLabel.textContent = category;
     }
-    if (eraBadge) {
-      eraBadge.textContent = decade;
+
+    if (titleLabel) {
+      titleLabel.textContent = osdMode === 'full-info' ? title : '';
     }
 
     // Trigger glowing CRT channel popup flash animation
