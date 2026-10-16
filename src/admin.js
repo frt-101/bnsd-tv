@@ -135,8 +135,15 @@ class AdminController {
     const btnClose = document.getElementById('btn-close-admin');
     const modal = document.getElementById('admin-modal');
 
+    const closeModal = () => {
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.setAttribute('aria-hidden', 'true');
+      }
+    };
+
     if (btnClose && modal) {
-      btnClose.addEventListener('click', () => modal.classList.add('hidden'));
+      btnClose.addEventListener('click', closeModal);
     }
 
     // Tab Navigation
@@ -144,10 +151,14 @@ class AdminController {
     tabs.forEach(tab => {
       tab.addEventListener('click', (e) => {
         const targetTab = e.target.getAttribute('data-tab');
-        tabs.forEach(t => t.classList.remove('active'));
+        tabs.forEach(t => {
+          t.classList.remove('active');
+          t.setAttribute('aria-selected', 'false');
+        });
         document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
 
         e.target.classList.add('active');
+        e.target.setAttribute('aria-selected', 'true');
         const content = document.getElementById(targetTab);
         if (content) content.classList.add('active');
       });
@@ -307,7 +318,7 @@ class AdminController {
       };
 
       playerEngine.startStream([testItem], 0);
-      document.getElementById('admin-modal')?.classList.add('hidden');
+      closeModal();
     });
 
     // Channel Selection Dropdown Change
@@ -353,7 +364,7 @@ class AdminController {
     // Save & Apply Settings Button
     document.getElementById('btn-save-settings')?.addEventListener('click', () => {
       this.applyAndRefreshStream();
-      modal?.classList.add('hidden');
+      closeModal();
     });
 
     // Telemetry Progress Listener

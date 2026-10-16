@@ -56,7 +56,11 @@ async function bootstrapApp() {
 
   // If ?admin=true or ?admin=embed in URL, open modal automatically
   if (openAdminParam === 'true' || isEmbedMode) {
-    document.getElementById('admin-modal')?.classList.remove('hidden');
+    const adminModal = document.getElementById('admin-modal');
+    if (adminModal) {
+      adminModal.classList.remove('hidden');
+      adminModal.setAttribute('aria-hidden', 'false');
+    }
   }
 
   if (isEmbedMode) {

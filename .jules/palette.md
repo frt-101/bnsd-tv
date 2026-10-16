@@ -1,0 +1,3 @@
+## 2025-05-20 - Accessible Control Center Modal & Tab Controls
+**Learning:** Modal dialogs and tab lists require explicit ARIA attributes (`role="dialog"`, `role="tablist"`, `role="tab"`, `role="tabpanel"`) and synchronized state properties (`aria-hidden`, `aria-selected`, `aria-controls`, `aria-labelledby`) so screen readers can navigate options smoothly without losing focus or context.
+**Action:** When adding or updating modal or tab components in this codebase, ensure interactive element state changes update corresponding ARIA attributes (`aria-hidden` and `aria-selected`) alongside class toggles.
