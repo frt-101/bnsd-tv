@@ -503,6 +503,17 @@ html, body {
   color: #fff;
 }
 
+/* Accessibility Focus States */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+.decade-card:focus-within,
+.cat-card:focus-within,
+.tab-content:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
 .modal-tabs {
   display: flex;
   gap: 4px;
