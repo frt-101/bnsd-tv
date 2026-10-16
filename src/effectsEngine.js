@@ -48,6 +48,12 @@ class EffectsEngine {
   /**
    * Pre-render a pool of authentic CRT static noise frames
    * to eliminate memory allocation and CPU load during 60fps rendering.
+   *
+   * PERFORMANCE OPTIMIZATION (⚡ Bolt):
+   * Capping internal frame size to ~320x180 (stretched via CSS) and using fast bitwise OR
+   * `(Math.random() * 255) | 0` instead of `Math.floor()`.
+   * Reduces loop iterations from 4.1M+ to ~460k during startup/resize and reduces GPU
+   * texture upload bandwidth during channel-switch transitions by ~89%.
    */
   initNoiseCache() {
     if (!this.ctx || !this.canvas) return;
