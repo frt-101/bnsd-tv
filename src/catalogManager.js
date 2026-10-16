@@ -74,12 +74,17 @@ class CatalogManager {
   }
 
   /**
-   * Export dead videos list to downloadable CSV
+   * Export dead videos list to downloadable CSV with formula injection protection
    */
   exportDeadVideosCSV() {
     let csv = "video_id,flagged_at\n";
     this.deadVideoIds.forEach(id => {
-      csv += `"${id}","${new Date().toISOString()}"\n`;
+      // Prevent CSV formula injection (=, +, -, @, \t, \r) and escape double quotes
+      let safeId = String(id).replace(/"/g, '""');
+      if (/^[=+\-@\t\r]/.test(safeId)) {
+        safeId = "'" + safeId;
+      }
+      csv += `"${safeId}","${new Date().toISOString()}"\n`;
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -123,6 +128,10 @@ class CatalogManager {
       const total = streams.length;
       for (let idx = 0; idx < total; idx++) {
         const row = streams[idx];
+        const [decIdx, yearVal, catIdx, videoIdVal] = row;
+        const decade = decades[decIdx] || '1990s';
+        const year = String(yearVal || '1995');
+        const category = categories[catIdx] || 'Commercials';
         const catName = category.toUpperCase();
         const decadeName = decade.toUpperCase();
 
@@ -133,7 +142,7 @@ class CatalogManager {
           category,
           catUpper: catName,
           decadeUpper: decadeName,
-          videoId,
+          videoId: videoIdVal,
           title: `${category} (${year})`,
           startSec: 0,
           endSec: 0
@@ -221,6 +230,13 @@ class CatalogManager {
     parsed.data.forEach((row, idx) => {
       const videoId = row.video_id ? row.video_id.trim() : null;
       if (!videoId) return;
+
+      const category = row.channel ? row.channel.trim() : 'Commercials';
+      const decade = row.decade ? row.decade.trim() : '1990s';
+      const year = row.year ? row.year.trim() : '1995';
+      const title = row.title ? row.title.trim() : `${category} (${year})`;
+      const startSec = parseInt(row.start_seconds, 10);
+      const endSec = parseInt(row.end_seconds, 10);
 
       const catUpper = category.toUpperCase();
       const decUpper = decade.toUpperCase();
