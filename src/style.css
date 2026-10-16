@@ -534,6 +534,15 @@ html, body {
   border-bottom-color: var(--accent-color);
 }
 
+.tab-btn:focus-visible,
+.btn-close:focus-visible,
+.btn-primary:focus-visible,
+.btn-sm:focus-visible,
+.btn-ctrl:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
 .modal-body {
   padding: 24px;
   overflow-y: auto;
