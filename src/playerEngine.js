@@ -84,6 +84,7 @@ class PlayerEngine {
    * Initialize YouTube iFrame API with queue and start index
    */
   init(queueOrCb, startIndexOrCb, onReadyCallback) {
+    window.playerEngine = this;
     let cb = onReadyCallback;
     if (typeof queueOrCb === 'function') {
       cb = queueOrCb;
@@ -193,12 +194,14 @@ class PlayerEngine {
         onReady: (e) => {
           try {
             if (typeof e.target.mute === 'function') e.target.mute();
+            this.suppressCaptions(e.target);
             if (this.activePlayerId === 'A') {
               e.target.playVideo();
             }
           } catch (err) {}
           checkReady();
         },
+        onApiChange: (e) => this.suppressCaptions(e.target),
         onStateChange: (e) => this.handlePlayerStateChange('A', e),
         onError: (e) => this.handlePlayerError('A', e)
       }
@@ -216,16 +219,36 @@ class PlayerEngine {
         onReady: (e) => {
           try {
             if (typeof e.target.mute === 'function') e.target.mute();
+            this.suppressCaptions(e.target);
             if (this.activePlayerId === 'B') {
               e.target.playVideo();
             }
           } catch (err) {}
           checkReady();
         },
+        onApiChange: (e) => this.suppressCaptions(e.target),
         onStateChange: (e) => this.handlePlayerStateChange('B', e),
         onError: (e) => this.handlePlayerError('B', e)
       }
     });
+    this.preloadedAt = Date.now();
+  }
+
+  /**
+   * Disable YouTube auto-captions / CC overlays via Player API
+   */
+  suppressCaptions(player) {
+    if (!player) return;
+    try {
+      if (typeof player.setOption === 'function') {
+        player.setOption('captions', 'track', {});
+        player.setOption('cc', 'track', {});
+      }
+      if (typeof player.unloadModule === 'function') {
+        player.unloadModule('captions');
+        player.unloadModule('cc');
+      }
+    } catch (e) {}
   }
 
   /**
@@ -240,34 +263,50 @@ class PlayerEngine {
       return;
     }
 
-    // On initial boot, Player A is already playing the first video from constructor playerVars!
-    // We only need to configure timing and start the background preloader for Player B.
     this.currentIndex = this.findNextLiveIndex(this.currentIndex);
     this.currentVideoItem = this.queue[this.currentIndex];
-    this.cuedItems['A'] = this.currentVideoItem;
-    this.deliberatelyPaused['A'] = false;
+    const activePlayer = this.getActivePlayer();
+    const alreadyCuedOnActive = this.cuedItems[this.activePlayerId]?.videoId === this.currentVideoItem?.videoId;
+
+    this.cuedItems[this.activePlayerId] = this.currentVideoItem;
+    this.deliberatelyPaused[this.activePlayerId] = false;
     this.lastAdvanceAt = Date.now();
 
     let maxDurationSec = this.consumePendingClipDuration(this.currentVideoItem);
+    let startSec = 0;
     if (maxDurationSec == null) {
-      maxDurationSec = this.calculateSmartClip(this.currentVideoItem).maxDurationSec;
+      const clip = this.calculateSmartClip(this.currentVideoItem);
+      maxDurationSec = clip.maxDurationSec;
+      startSec = clip.startSec;
     }
     this.activeCutoffSec = maxDurationSec;
     this.elapsedSeconds = 0;
-    this.hasPreloadedForCurrentClip = false;
+
+    // Check if the inactive player already has the next item preloading from createPlayers()
+    const inactivePlayerId = this.activePlayerId === 'A' ? 'B' : 'A';
+    const nextIndex = this.findNextLiveIndex((this.currentIndex + 1) % this.queue.length);
+    const nextItem = this.queue[nextIndex];
+    const alreadyPreloadedOnInactive = Boolean(
+      nextItem &&
+      this.cuedItems[inactivePlayerId]?.videoId === nextItem.videoId &&
+      !this.deliberatelyPaused[inactivePlayerId]
+    );
+    this.hasPreloadedForCurrentClip = alreadyPreloadedOnInactive && this.activeCutoffSec <= 14;
 
     this.updateOSD(this.currentVideoItem);
 
-    // Explicitly guarantee active player is rolling
-    const activePlayer = this.getActivePlayer();
-    if (activePlayer) {
+    // If startStream was called with a new queue/video (e.g. from Admin settings), load it on activePlayer
+    if (!alreadyCuedOnActive && activePlayer && typeof activePlayer.loadVideoById === 'function') {
       try {
         if (typeof activePlayer.mute === 'function') activePlayer.mute();
-        if (typeof activePlayer.playVideo === 'function') activePlayer.playVideo();
+        activePlayer.loadVideoById({
+          videoId: this.currentVideoItem.videoId,
+          startSeconds: startSec
+        });
       } catch (e) {}
     }
 
-    if (this.activeCutoffSec <= 10) {
+    if (this.activeCutoffSec <= 10 && !alreadyPreloadedOnInactive) {
       this.hasPreloadedForCurrentClip = true;
       this.preloadNext();
     }
@@ -287,6 +326,14 @@ class PlayerEngine {
     const nextIndex = this.findNextLiveIndex((this.currentIndex + 1) % this.queue.length);
     const nextItem = this.queue[nextIndex];
     if (!nextItem) return;
+
+    this.hasPreloadedForCurrentClip = true;
+
+    // If this exact video is already playing in the background on inactivePlayer, do not reload it
+    // (reloading would reset its 5-second YouTube play/pause bezel fade-out timer).
+    if (this.cuedItems[inactivePlayerId]?.videoId === nextItem.videoId && !this.deliberatelyPaused[inactivePlayerId]) {
+      return;
+    }
 
     this.cuedItems[inactivePlayerId] = nextItem;
     this.deliberatelyPaused[inactivePlayerId] = false;
@@ -611,9 +658,13 @@ class PlayerEngine {
     if (event.data === 0 && playerId === this.activePlayerId) {
       this.nextVideo();
     }
-    // YT.PlayerState.PLAYING = 1: video started rolling, reset stuck counter
-    if (event.data === 1 && playerId === this.activePlayerId) {
-      this.stuckSeconds = 0;
+    // YT.PlayerState.PLAYING = 1: video started rolling, reset stuck counter & suppress captions
+    if (event.data === 1) {
+      this.suppressCaptions(event.target);
+      if (playerId === this.activePlayerId) {
+        this.stuckSeconds = 0;
+        this.consecutiveErrorCount = 0;
+      }
     }
     // YT.PlayerState.PAUSED = 2: If any video is unexpectedly paused (not the deliberately paused outgoing player), resume immediately
     if (event.data === 2) {
@@ -771,20 +822,24 @@ class PlayerEngine {
         this.stuckSeconds = 0;
       }
 
-      // JIT background pre-loading: start background player 9s before channel switch
+      // JIT background pre-loading: start background player 10s before channel switch
       // (or when <= 12s of file duration remain) so YouTube's startup bezel expires 100% in the dark!
-      const leadTime = 9;
+      const leadTime = 10;
       const nearFileEnd = duration > 0 && currentTime > 0 && (duration - currentTime <= 12);
       if ((this.elapsedSeconds >= Math.max(1, this.activeCutoffSec - leadTime) || nearFileEnd) && !this.hasPreloadedForCurrentClip) {
         this.hasPreloadedForCurrentClip = true;
         this.preloadNext();
       }
 
-      // Auto-next if elapsed reaches cutoff OR if video is within 2.5s of ending
+      // Auto-next if elapsed reaches cutoff OR if video is within 2.5s of ending.
+      // If a background replacement video was just re-cued (< 5.8s ago), let the current
+      // active clip play up to 4s longer so the incoming player's pause bezel fades out in the dark.
       const isCutoff = this.activeCutoffSec > 0 && this.elapsedSeconds >= this.activeCutoffSec;
       const isNearEnd = duration > 0 && currentTime > 0 && (duration - currentTime <= 2.5);
+      const preloadAgeMs = this.preloadedAt ? (Date.now() - this.preloadedAt) : 99999;
+      const isPreloadBaked = preloadAgeMs >= 5800 || (this.elapsedSeconds - this.activeCutoffSec >= 4);
 
-      if (isCutoff || isNearEnd) {
+      if ((isCutoff && isPreloadBaked) || isNearEnd) {
         console.log(`Auto-advancing stream (Cutoff: ${isCutoff}, NearEnd: ${isNearEnd})...`);
         this.nextVideo();
       }
