@@ -153,8 +153,20 @@ class AdminController {
       });
     });
 
-    // Note: Manual keyboard listeners removed for unattended kiosk operation.
-    // Admin drawer remains accessible via ?admin=true parameter.
+    // Keyboard Shortcuts (N = Next, O = OSD, W = Washout, A = Admin) for laptop testing
+    window.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+      if (e.key === 'n' || e.key === 'N') playerEngine.nextVideo(true);
+      if (e.key === 'o' || e.key === 'O') document.getElementById('osd-hud')?.classList.toggle('hidden');
+      if (e.key === 'w' || e.key === 'W') {
+        this.washoutEnabled = !this.washoutEnabled;
+        const chkWashout = document.getElementById('chk-enable-washout');
+        if (chkWashout) chkWashout.checked = this.washoutEnabled;
+        effectsEngine.updateWashoutSettings(this.contrast, this.brightness, this.opacity, this.washoutEnabled);
+      }
+      if (e.key === 'a' || e.key === 'A') modal?.classList.toggle('hidden');
+    });
 
     // Range Sliders Input Sync
     this.bindRange('range-contrast', 'val-contrast', (val) => {

@@ -1,28 +1,44 @@
 import { effectsEngine } from './effectsEngine.js';
 import { catalogManager } from './catalogManager.js';
 
+// YouTube embedded players display their title bar, channel watermark, and initial
+// play/pause bezel for ~4.0–4.5s after entering YT.PlayerState.PLAYING (1).
+// Requiring at least 5.2s of active PLAYING time in the hidden background player
+// guarantees 100% of YouTube's startup UI has disappeared before any channel swap.
+const MIN_HIDDEN_PLAY_BAKE_MS = 5200;
+
+// Lead time (in seconds before clip cutoff) to start loading & playing the next
+// video in the hidden background container (~2-3s network buffer + 5.2s bake).
+const PRELOAD_LEAD_TIME_SEC = 9;
+
 class PlayerEngine {
   constructor() {
     this.playerA = null;
     this.playerB = null;
     this.activePlayerId = 'A'; // 'A' or 'B'
     this.isApiReady = false;
+    this.hasStartedStream = false;
 
     this.queue = [];
     this.currentIndex = 0;
+    this.preloadedIndex = null;
     this.consecutiveErrorCount = 0;
     this.isTransitioning = false;
+    this.bakePollTimer = null;
 
-    // Watchdog support: timestamp of the last successful channel change, and
-    // the pending autoplay-retry timer for whatever's currently loading.
+    // Watchdog support: timestamp of the last successful channel change
     this.lastAdvanceAt = null;
     this.autoplayFallbackTimeout = null;
 
-    // Tracks which video object is actually loaded/cued on each physical player,
-    // so error handling can identify and quarantine the right video regardless
-    // of which player (active or preloading) reported the error.
+    // Per-player state tracking
     this.cuedItems = { A: null, B: null };
+    this.cuedStartSec = { A: 0, B: 0 };
+    this.seekVerified = { A: false, B: false };
     this.deliberatelyPaused = { A: false, B: false };
+    this.playerStates = { A: -1, B: -1 };
+    this.playingSince = { A: 0, B: 0 };
+    this.resumeTimeouts = { A: null, B: null };
+    this.postSwapPauseTimeout = null;
 
     // Config Rules & Pacing Modes
     this.pacingMode = 'channel-surfer'; // 'channel-surfer' | 'balanced' | 'deep-cuts'
@@ -32,7 +48,7 @@ class PlayerEngine {
     this.zapBurstEnabled = true;
 
     // Human Remote Surfing Engine (Authentic Psychological Session State Machine)
-    // Sessions cycle naturally: 'browse_flurry' (2-4 fast clicks) -> 'curious_glance' (15-30s) -> 'settle_in' (45-85s)
+    // Sessions cycle naturally: 'browse_flurry' (2-4 fast clicks) -> 'curious_glance' (18-35s) -> 'settle_in' (45-85s)
     this.currentSessionType = 'settle_in';
     this.sessionClipsRemaining = 1;
 
@@ -42,42 +58,67 @@ class PlayerEngine {
     this.clipTimer = null;
     this.elapsedSeconds = 0;
     this.activeCutoffSec = 30;
+    this.stuckSeconds = 0;
     this.isZapClip = false;
     this.hasPreloadedForCurrentClip = false;
     this.onProgressCallback = null;
 
-    // calculateSmartClip() both rolls a random duration AND advances the
-    // human-surfing session state machine (sessionClipsRemaining--). Every
-    // video is run through it once when it's preloaded (to get its startSec)
-    // and again once it becomes current (to get its on-screen cutoff) --
-    // without this cache those were two separate calls, silently burning two
-    // session "ticks" per video actually shown instead of one, so a
-    // browse_flurry configured for e.g. 3 rapid clicks only ever showed
-    // ~1.5 of them before the mood flipped. This caches the duration rolled
-    // at preload time so activation reuses it instead of rerolling.
-    this.pendingClipCache = new Map(); // videoId -> maxDurationSec
+    // Cache the clip parameters rolled at preload time so activation reuses them
+    // without double-ticking the surfing session state machine.
+    this.pendingClipCache = new Map(); // videoId -> { startSec, maxDurationSec }
   }
 
   /**
-   * Cache the duration calculateSmartClip() rolled for a video at preload
-   * time, so the same video's activation later reuses it instead of calling
-   * calculateSmartClip() (and its session-state side effects) a second time.
+   * Cache clip timing rolled for a video at preload time.
    */
-  cachePendingClipDuration(videoItem, maxDurationSec) {
+  cachePendingClip(videoItem, clipData) {
     if (!videoItem) return;
-    this.pendingClipCache.set(videoItem.videoId, maxDurationSec);
+    this.pendingClipCache.set(videoItem.videoId, clipData);
   }
 
   /**
-   * Consume (and remove) a cached preload-time duration for this video, if
-   * one exists. Returns null if there's no cached value, so callers can fall
-   * back to a fresh calculateSmartClip() call.
+   * Consume (and remove) cached preload-time clip timing for this video.
    */
-  consumePendingClipDuration(videoItem) {
+  consumePendingClip(videoItem) {
     if (!videoItem || !this.pendingClipCache.has(videoItem.videoId)) return null;
-    const maxDurationSec = this.pendingClipCache.get(videoItem.videoId);
+    const clipData = this.pendingClipCache.get(videoItem.videoId);
     this.pendingClipCache.delete(videoItem.videoId);
-    return maxDurationSec;
+    return clipData;
+  }
+
+  /**
+   * Check whether a given player ('A' or 'B') is actively playing and has been in
+   * YT.PlayerState.PLAYING (1) long enough for YouTube's startup UI bezel to auto-hide.
+   */
+  isPlayerBaked(playerId, minBakeMs = MIN_HIDDEN_PLAY_BAKE_MS) {
+    return (
+      this.playerStates[playerId] === 1 &&
+      this.playingSince[playerId] > 0 &&
+      Date.now() - this.playingSince[playerId] >= minBakeMs
+    );
+  }
+
+  isActivePlayerBaked(minBakeMs = MIN_HIDDEN_PLAY_BAKE_MS) {
+    return this.isPlayerBaked(this.activePlayerId, minBakeMs);
+  }
+
+  isInactivePlayerBaked(minBakeMs = MIN_HIDDEN_PLAY_BAKE_MS) {
+    const inactiveId = this.activePlayerId === 'A' ? 'B' : 'A';
+    return this.isPlayerBaked(inactiveId, minBakeMs);
+  }
+
+  /**
+   * Configure underlying iframe attributes so browser autoplay policies and
+   * focus behavior never interfere with headless display operation.
+   */
+  configureIframeElement(player) {
+    try {
+      const iframe = player && typeof player.getIframe === 'function' ? player.getIframe() : null;
+      if (iframe) {
+        iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
+        iframe.setAttribute('tabindex', '-1');
+      }
+    } catch (e) {}
   }
 
   /**
@@ -127,15 +168,15 @@ class PlayerEngine {
     let readyCount = 0;
     const checkReady = () => {
       readyCount++;
-      if (readyCount >= 1) {
+      if (readyCount >= 2) {
         fireCallback();
       }
     };
 
-    // Guarantee stream starts within 400ms fallback
+    // Fallback so startup proceeds even if inactive player takes longer to report ready
     setTimeout(() => {
       fireCallback();
-    }, 400);
+    }, 1200);
 
     const defaultPlayerVars = {
       autoplay: 1,
@@ -155,8 +196,6 @@ class PlayerEngine {
 
     let videoIdA = undefined;
     let startSecA = 0;
-    let videoIdB = undefined;
-    let startSecB = 0;
 
     if (this.queue && this.queue.length > 0) {
       this.currentIndex = this.findNextLiveIndex(this.currentIndex);
@@ -167,20 +206,13 @@ class PlayerEngine {
         const clipA = this.calculateSmartClip(this.currentVideoItem);
         startSecA = clipA.startSec;
         this.activeCutoffSec = clipA.maxDurationSec;
-        this.cachePendingClipDuration(this.currentVideoItem, clipA.maxDurationSec);
-      }
-
-      const nextIndex = this.findNextLiveIndex((this.currentIndex + 1) % this.queue.length);
-      const nextItem = this.queue[nextIndex];
-      this.cuedItems['B'] = nextItem;
-      if (nextItem) {
-        videoIdB = nextItem.videoId;
-        const clipB = this.calculateSmartClip(nextItem);
-        startSecB = clipB.startSec;
-        this.cachePendingClipDuration(nextItem, clipB.maxDurationSec);
+        this.cuedStartSec['A'] = startSecA;
+        this.seekVerified['A'] = false;
+        this.cachePendingClip(this.currentVideoItem, clipA);
       }
     }
 
+    // Player A boots immediately behind the CRT Power-On Warmup screen.
     this.playerA = new window.YT.Player('player-a', {
       width: '100%',
       height: '100%',
@@ -191,10 +223,14 @@ class PlayerEngine {
       },
       events: {
         onReady: (e) => {
+          this.configureIframeElement(e.target);
           try {
             if (typeof e.target.mute === 'function') e.target.mute();
             if (this.activePlayerId === 'A') {
-              e.target.playVideo();
+              const state = typeof e.target.getPlayerState === 'function' ? e.target.getPlayerState() : -1;
+              if (state !== 1 && state !== 3 && typeof e.target.playVideo === 'function') {
+                e.target.playVideo();
+              }
             }
           } catch (err) {}
           checkReady();
@@ -204,21 +240,18 @@ class PlayerEngine {
       }
     });
 
+    // Player B is created idle (no initial videoId) so it doesn't prematurely play and
+    // finish Video 2 while Video 1 is still playing. preloadNext() loads Video 2 at the
+    // exact lead-time window before Video 1 ends.
     this.playerB = new window.YT.Player('player-b', {
       width: '100%',
       height: '100%',
-      videoId: videoIdB,
-      playerVars: {
-        ...defaultPlayerVars,
-        start: startSecB
-      },
+      playerVars: defaultPlayerVars,
       events: {
         onReady: (e) => {
+          this.configureIframeElement(e.target);
           try {
             if (typeof e.target.mute === 'function') e.target.mute();
-            if (this.activePlayerId === 'B') {
-              e.target.playVideo();
-            }
           } catch (err) {}
           checkReady();
         },
@@ -229,7 +262,10 @@ class PlayerEngine {
   }
 
   /**
-   * Set playback queue and start playback
+   * Set playback queue and start playback.
+   * On initial boot, Player A is already loading the first video from createPlayers().
+   * On subsequent calls (e.g. Admin settings refresh or Direct Video Tester), loads the
+   * new video onto the hidden player and transitions cleanly once baked.
    */
   startStream(queue, startIndex = 0) {
     this.queue = queue;
@@ -240,34 +276,34 @@ class PlayerEngine {
       return;
     }
 
-    // On initial boot, Player A is already playing the first video from constructor playerVars!
-    // We only need to configure timing and start the background preloader for Player B.
+    // If stream is already running (e.g. Admin Panel settings update or Direct Video Tester),
+    // preload the target video into the hidden player and transition cleanly via nextVideo().
+    if (this.hasStartedStream) {
+      const targetIdx = this.findNextLiveIndex(this.currentIndex);
+      this.hasPreloadedForCurrentClip = true;
+      this.preloadNext(targetIdx);
+      this.nextVideo(true);
+      return;
+    }
+
+    this.hasStartedStream = true;
     this.currentIndex = this.findNextLiveIndex(this.currentIndex);
     this.currentVideoItem = this.queue[this.currentIndex];
     this.cuedItems['A'] = this.currentVideoItem;
     this.deliberatelyPaused['A'] = false;
     this.lastAdvanceAt = Date.now();
 
-    let maxDurationSec = this.consumePendingClipDuration(this.currentVideoItem);
-    if (maxDurationSec == null) {
-      maxDurationSec = this.calculateSmartClip(this.currentVideoItem).maxDurationSec;
-    }
+    const cached = this.consumePendingClip(this.currentVideoItem);
+    const maxDurationSec = cached ? cached.maxDurationSec : this.calculateSmartClip(this.currentVideoItem).maxDurationSec;
     this.activeCutoffSec = maxDurationSec;
     this.elapsedSeconds = 0;
+    this.stuckSeconds = 0;
     this.hasPreloadedForCurrentClip = false;
 
     this.updateOSD(this.currentVideoItem);
 
-    // Explicitly guarantee active player is rolling
-    const activePlayer = this.getActivePlayer();
-    if (activePlayer) {
-      try {
-        if (typeof activePlayer.mute === 'function') activePlayer.mute();
-        if (typeof activePlayer.playVideo === 'function') activePlayer.playVideo();
-      } catch (e) {}
-    }
-
-    if (this.activeCutoffSec <= 8) {
+    // If the initial clip is short, start preloading the next clip immediately
+    if (this.activeCutoffSec <= PRELOAD_LEAD_TIME_SEC + 3) {
       this.hasPreloadedForCurrentClip = true;
       this.preloadNext();
     }
@@ -277,28 +313,43 @@ class PlayerEngine {
 
   /**
    * Preload and start the next video on the hidden inactive player in the background (opacity: 0).
-   * Because it starts playing in the dark, all loading/buffering and pause overlays are invisible.
+   * Because it starts playing in the dark, all loading/buffering and startup overlays remain invisible.
    */
-  preloadNext() {
+  preloadNext(explicitTargetIndex = null) {
     if (!this.queue || this.queue.length === 0) return;
 
     const inactivePlayer = this.getInactivePlayer();
     const inactivePlayerId = this.activePlayerId === 'A' ? 'B' : 'A';
-    const nextIndex = this.findNextLiveIndex((this.currentIndex + 1) % this.queue.length);
+
+    let nextIndex;
+    if (typeof explicitTargetIndex === 'number') {
+      nextIndex = this.findNextLiveIndex(explicitTargetIndex % this.queue.length);
+    } else if (this.preloadedIndex !== null) {
+      nextIndex = this.findNextLiveIndex((this.preloadedIndex + 1) % this.queue.length);
+    } else {
+      nextIndex = this.findNextLiveIndex((this.currentIndex + 1) % this.queue.length);
+    }
+
     const nextItem = this.queue[nextIndex];
     if (!nextItem) return;
 
+    clearTimeout(this.postSwapPauseTimeout);
+    clearTimeout(this.resumeTimeouts[inactivePlayerId]);
+
+    this.preloadedIndex = nextIndex;
     this.cuedItems[inactivePlayerId] = nextItem;
     this.deliberatelyPaused[inactivePlayerId] = false;
+    this.playerStates[inactivePlayerId] = -1;
+    this.playingSince[inactivePlayerId] = 0;
+    this.seekVerified[inactivePlayerId] = false;
     this.preloadedAt = Date.now();
+
     const nextClip = this.calculateSmartClip(nextItem);
-    this.cachePendingClipDuration(nextItem, nextClip.maxDurationSec);
+    this.cuedStartSec[inactivePlayerId] = nextClip.startSec;
+    this.cachePendingClip(nextItem, nextClip);
 
     if (inactivePlayer && typeof inactivePlayer.loadVideoById === 'function') {
       try {
-        if (typeof inactivePlayer.mute === 'function') {
-          inactivePlayer.mute();
-        }
         inactivePlayer.loadVideoById({
           videoId: nextItem.videoId,
           startSeconds: nextClip.startSec
@@ -352,8 +403,8 @@ class PlayerEngine {
   /**
    * Calculate smart clip duration and start offset based on human channel-surfing behavior clusters.
    * Alternates naturally between:
-   * 1. Rapid remote "flurry" clicks (5s to 9s) - "searching"
-   * 2. Curious glances (18s to 32s) - "hooked"
+   * 1. Rapid remote "flurry" clicks (9s to 12s) - "searching"
+   * 2. Curious glances (18s to 35s) - "hooked"
    * 3. Settle-in deeper watches (45s to 85s) - "immersed"
    */
   calculateSmartClip(videoItem) {
@@ -377,8 +428,8 @@ class PlayerEngine {
     // 3. Derive duration based on current session mood and video category
     if (this.currentSessionType === 'browse_flurry' && this.zapBurstEnabled) {
       this.isZapClip = true;
-      // Quick remote clicks: 8 to 11 seconds (ensures background preloader has sufficient lead time)
-      maxDurationSec = Math.floor(Math.random() * 4) + 8;
+      // Quick remote clicks: 9 to 12 seconds (gives hidden preloader full buffer + 5.2s bake window)
+      maxDurationSec = Math.floor(Math.random() * 4) + 9;
       if (this.randomOffsetEnabled && startSec === 0) {
         startSec = this.getSmartVisualSeekOffset(cat);
       }
@@ -400,13 +451,13 @@ class PlayerEngine {
         if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 51) + 30;
       } else if (cat === 'cartoons' || cat === 'kids') {
         maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 16) + 30 : Math.floor(Math.random() * 11) + 20; // 20-31s
-        if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 121) + 30;
+        if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 91) + 25;
       } else if (cat === 'comedy') {
         maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 16) + 32 : Math.floor(Math.random() * 11) + 22; // 22-33s
         if (this.randomOffsetEnabled && startSec === 0) startSec = this.getSmartVisualSeekOffset(cat);
       } else {
         maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 16) + 30 : Math.floor(Math.random() * 11) + 20; // 20-31s
-        if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 121) + 45;
+        if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 91) + 30;
       }
     } else {
       // 'settle_in' session: 45 to 85 seconds - deep nostalgic immersion
@@ -421,13 +472,13 @@ class PlayerEngine {
         if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 61) + 30;
       } else if (cat === 'cartoons' || cat === 'kids') {
         maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 26) + 55 : (isBalanced ? Math.floor(Math.random() * 21) + 40 : Math.floor(Math.random() * 16) + 35); // 35-51s
-        if (this.randomOffsetEnabled && startSec === 0) startSec = Math.random() < 0.25 ? 0 : Math.floor(Math.random() * 156) + 45;
+        if (this.randomOffsetEnabled && startSec === 0) startSec = Math.random() < 0.25 ? 0 : Math.floor(Math.random() * 110) + 35;
       } else if (cat === 'comedy') {
         maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 26) + 60 : (isBalanced ? Math.floor(Math.random() * 21) + 42 : Math.floor(Math.random() * 16) + 35); // 35-51s
         if (this.randomOffsetEnabled && startSec === 0) startSec = this.getSmartVisualSeekOffset(cat);
       } else {
         maxDurationSec = isDeepCuts ? Math.floor(Math.random() * 26) + 60 : (isBalanced ? Math.floor(Math.random() * 21) + 45 : Math.floor(Math.random() * 16) + 35); // 35-51s
-        if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 181) + 60;
+        if (this.randomOffsetEnabled && startSec === 0) startSec = Math.floor(Math.random() * 120) + 40;
       }
     }
 
@@ -487,97 +538,143 @@ class PlayerEngine {
    */
   getSmartVisualSeekOffset(cat) {
     if (cat === 'commercials' || cat === 'trailers') return 0;
-    if (cat === 'gameshows') return Math.floor(Math.random() * 61) + 45; // 45-105s (jump straight into gameplay, buzzers & prizes)
-    if (cat === 'music') return Math.floor(Math.random() * 61) + 30; // 30-90s
-    if (cat === 'cartoons' || cat === 'kids') return Math.floor(Math.random() * 156) + 45; // 45-200s
-    if (cat === 'sports') return Math.floor(Math.random() * 241) + 60; // 60-300s
-    if (cat === 'comedy') return Math.floor(Math.random() * 121) + 45; // 45-165s
-    return Math.floor(Math.random() * 181) + 60; // 60-240s
+    if (cat === 'gameshows') return Math.floor(Math.random() * 50) + 30; // 30-80s (jump straight into gameplay, buzzers & prizes)
+    if (cat === 'music') return Math.floor(Math.random() * 55) + 25; // 25-80s
+    if (cat === 'cartoons' || cat === 'kids') return Math.floor(Math.random() * 90) + 30; // 30-120s
+    if (cat === 'sports') return Math.floor(Math.random() * 120) + 40; // 40-160s
+    if (cat === 'comedy') return Math.floor(Math.random() * 80) + 30; // 30-110s
+    return Math.floor(Math.random() * 90) + 35; // 35-125s
   }
 
   /**
    * Advance to next video in queue with CRT channel static glitch.
-   * Seamlessly reveals the already-playing background player with zero pause or loading overlay.
+   * Guarantees the incoming background player has been actively PLAYING in the dark
+   * for >= 5.2s before revealing it, so YouTube UI overlays are 100% impossible.
    */
-  nextVideo() {
+  nextVideo(forceImmediateStatic = false) {
     if (!this.queue || this.queue.length === 0) return;
-
-    // Guard against two overlapping calls (e.g. the natural "ended" event and
-    // the clip-cutoff timer firing within the same tick): without this, the
-    // second call's effectsEngine.triggerChannelSwitch() cancels the first
-    // call's still-pending peak timeout, so the first call's swap/preload/OSD
-    // update silently never runs.
     if (this.isTransitioning) return;
-    this.isTransitioning = true;
 
-    this.clearClipTimer();
-
-    // Advance virtual channel number to simulate human remote clicking
-    const isRapidSurfing = this.isZapClip || this.currentSessionType === 'browse_flurry';
-    this.advanceChannelNumber(isRapidSurfing);
-
-    // Fast 140ms static during rapid browse flurries vs 240ms normal static
-    const staticDuration = isRapidSurfing ? 140 : 240;
-    const hadPreloaded = this.hasPreloadedForCurrentClip;
-
-    // If the clip ended before the JIT preloader ever got a chance to fire
-    // (e.g. a video that runs out sooner than its calculated cutoff), kick
-    // off the load on the hidden inactive player right now instead of
-    // waiting for the static transition's midpoint. That's the difference
-    // between ~7s of hidden buffering time (the normal preloaded path) and
-    // ~100ms -- which is exactly what let YouTube's own loading/pause UI
-    // flash through once the static cleared.
-    if (!hadPreloaded) {
+    // Ensure background preloader has been started
+    if (!this.hasPreloadedForCurrentClip) {
       this.hasPreloadedForCurrentClip = true;
       this.preloadNext();
     }
 
-    effectsEngine.triggerChannelSwitch(staticDuration, () => {
-      this.isTransitioning = false;
+    // Fast path: background player has ALREADY played for >= 5.2s in the dark!
+    // Execute a crisp 160ms/240ms CRT static glitch and swap at peak static.
+    if (this.isInactivePlayerBaked()) {
+      this.isTransitioning = true;
+      this.clearClipTimer();
+      clearTimeout(this.bakePollTimer);
 
-      // 1. Swap active player container focus (brings already-running background player to front)
-      this.toggleActivePlayerFocus();
+      const isRapidSurfing = this.isZapClip || this.currentSessionType === 'browse_flurry';
+      this.advanceChannelNumber(isRapidSurfing);
+      const staticDuration = isRapidSurfing ? 160 : 240;
 
-      // 1b. Pause outgoing player now that switch is complete to free hardware decoders
-      const outgoingPlayerId = this.activePlayerId === 'A' ? 'B' : 'A';
-      this.deliberatelyPaused[outgoingPlayerId] = true;
-      const outgoingPlayer = this.getInactivePlayer();
-      if (outgoingPlayer && typeof outgoingPlayer.pauseVideo === 'function') {
-        try {
-          outgoingPlayer.pauseVideo();
-        } catch (e) {}
+      effectsEngine.triggerChannelSwitch(staticDuration, () => {
+        this.completeChannelSwap();
+      });
+      return;
+    }
+
+    // If the active player is still playing normally and we aren't forced to cut away immediately,
+    // let the active clip continue rolling for a moment while the background player finishes baking.
+    const activeState = this.playerStates[this.activePlayerId];
+    if (!forceImmediateStatic && activeState === 1) {
+      return;
+    }
+
+    // Forced transition (e.g. active video ended unexpectedly, errored, or manual skip)
+    // while the background player is still buffering/baking:
+    // Hold authentic CRT tuning static over the screen until the incoming player is baked!
+    this.isTransitioning = true;
+    this.clearClipTimer();
+    clearTimeout(this.bakePollTimer);
+
+    const isRapidSurfing = this.isZapClip || this.currentSessionType === 'browse_flurry';
+    this.advanceChannelNumber(isRapidSurfing);
+
+    // Update OSD immediately so viewer sees channel tuning header over CRT static
+    const incomingIdx = this.preloadedIndex !== null ? this.preloadedIndex : this.findNextLiveIndex((this.currentIndex + 1) % this.queue.length);
+    this.updateOSD(this.queue[incomingIdx]);
+
+    effectsEngine.startStaticHold();
+
+    const holdStart = Date.now();
+    const maxHoldMs = 7500;
+
+    const waitForBake = () => {
+      const waited = Date.now() - holdStart;
+      if (this.isInactivePlayerBaked() || waited >= maxHoldMs) {
+        effectsEngine.stopStaticHold(() => {
+          this.completeChannelSwap(false); // OSD already updated when static hold began
+        }, 140);
+      } else {
+        this.bakePollTimer = setTimeout(waitForBake, 150);
       }
+    };
 
-      // 2. Advance to the next live queue index
-      this.currentIndex = this.findNextLiveIndex((this.currentIndex + 1) % this.queue.length);
-      this.currentVideoItem = this.queue[this.currentIndex];
-      this.cuedItems[this.activePlayerId] = this.currentVideoItem;
-      this.deliberatelyPaused[this.activePlayerId] = false;
-      this.lastAdvanceAt = Date.now();
+    this.bakePollTimer = setTimeout(waitForBake, 150);
+  }
 
-      // 3. Set cutoff duration for this newly active video (reuse the
-      // duration already rolled for it at preload time, if we have one, so
-      // the human-surfing session state machine only ticks once per video)
-      let maxDurationSec = this.consumePendingClipDuration(this.currentVideoItem);
-      if (maxDurationSec == null) {
-        maxDurationSec = this.calculateSmartClip(this.currentVideoItem).maxDurationSec;
-      }
-      this.activeCutoffSec = maxDurationSec;
-      this.elapsedSeconds = 0;
-      this.hasPreloadedForCurrentClip = false;
+  /**
+   * Perform the actual A/B container swap and state transition while covered by CRT static.
+   */
+  completeChannelSwap(shouldUpdateOSD = true) {
+    this.isTransitioning = false;
+    clearTimeout(this.bakePollTimer);
 
-      // 4. Update OSD green HUD display
+    // 1. Swap active player container focus (brings already-running background player to front)
+    this.toggleActivePlayerFocus();
+
+    // 2. Advance current index to match the newly revealed player
+    const nextIndex = this.preloadedIndex !== null
+      ? this.preloadedIndex
+      : this.findNextLiveIndex((this.currentIndex + 1) % this.queue.length);
+    this.currentIndex = nextIndex;
+    this.preloadedIndex = null;
+    this.currentVideoItem = this.queue[this.currentIndex];
+    this.cuedItems[this.activePlayerId] = this.currentVideoItem;
+    this.deliberatelyPaused[this.activePlayerId] = false;
+    this.lastAdvanceAt = Date.now();
+
+    // 3. Set cutoff duration for this newly active video
+    const cached = this.consumePendingClip(this.currentVideoItem);
+    const maxDurationSec = cached ? cached.maxDurationSec : this.calculateSmartClip(this.currentVideoItem).maxDurationSec;
+    this.activeCutoffSec = maxDurationSec;
+    this.elapsedSeconds = 0;
+    this.stuckSeconds = 0;
+    this.hasPreloadedForCurrentClip = false;
+
+    // 4. Update OSD green HUD display
+    if (shouldUpdateOSD) {
       this.updateOSD(this.currentVideoItem);
+    }
 
-      // 5. Start clip timing monitor
-      this.startClipTimer();
+    // 5. Start clip timing monitor
+    this.startClipTimer();
 
-      // 6. If clip is short (<= 8s), preload next video immediately
-      if (this.activeCutoffSec <= 8) {
-        this.hasPreloadedForCurrentClip = true;
-        this.preloadNext();
-      }
-    });
+    // 6. If clip is short (<= 12s), preload the next video immediately on the now-hidden player.
+    // Otherwise, pause the hidden outgoing player 250ms after the swap is complete to save CPU.
+    const outgoingPlayerId = this.activePlayerId === 'A' ? 'B' : 'A';
+    if (this.activeCutoffSec <= PRELOAD_LEAD_TIME_SEC + 3) {
+      this.hasPreloadedForCurrentClip = true;
+      this.preloadNext();
+    } else {
+      clearTimeout(this.postSwapPauseTimeout);
+      this.postSwapPauseTimeout = setTimeout(() => {
+        if (!this.hasPreloadedForCurrentClip && this.activePlayerId !== outgoingPlayerId) {
+          this.deliberatelyPaused[outgoingPlayerId] = true;
+          const outgoingPlayer = this.getInactivePlayer();
+          if (outgoingPlayer && typeof outgoingPlayer.pauseVideo === 'function') {
+            try {
+              outgoingPlayer.pauseVideo();
+            } catch (e) {}
+          }
+        }
+      }, 250);
+    }
   }
 
   /**
@@ -607,44 +704,97 @@ class PlayerEngine {
   }
 
   handlePlayerStateChange(playerId, event) {
+    const state = event.data;
+    const prevState = this.playerStates[playerId];
+    this.playerStates[playerId] = state;
+    const player = playerId === 'A' ? this.playerA : this.playerB;
+
+    // YT.PlayerState.PLAYING = 1
+    if (state === 1) {
+      clearTimeout(this.resumeTimeouts[playerId]);
+      if (prevState !== 1 || this.playingSince[playerId] === 0) {
+        this.playingSince[playerId] = Date.now();
+      }
+      if (playerId === this.activePlayerId) {
+        this.stuckSeconds = 0;
+        this.consecutiveErrorCount = 0;
+      }
+
+      // Verify random seek offset didn't land too close to the end of a short video
+      if (!this.seekVerified[playerId] && player) {
+        try {
+          const dur = typeof player.getDuration === 'function' ? player.getDuration() : 0;
+          const cur = typeof player.getCurrentTime === 'function' ? player.getCurrentTime() : 0;
+          if (dur > 0) {
+            this.seekVerified[playerId] = true;
+            if (this.cuedStartSec[playerId] > 0 && (dur - cur) < 22) {
+              if (dur >= 15 && typeof player.seekTo === 'function') {
+                // Rewind short clip to 0s while still in the dark
+                this.cuedStartSec[playerId] = 0;
+                this.playingSince[playerId] = Date.now();
+                player.seekTo(0, true);
+              } else if (playerId !== this.activePlayerId) {
+                // Ultra-short snippet in background preloader: cue next video instead
+                this.preloadNext();
+              }
+            }
+          }
+        } catch (e) {}
+      }
+      return;
+    }
+
     // YT.PlayerState.ENDED = 0
-    if (event.data === 0 && playerId === this.activePlayerId) {
-      this.nextVideo();
+    if (state === 0) {
+      this.playingSince[playerId] = 0;
+
+      // If the hidden background preloader hit ENDED (e.g. random startSec overshot the
+      // total duration of a short clip), either rewind to 0s or preload the next video so
+      // an ENDED player with YouTube's "More Videos" grid is NEVER swapped onto the screen.
+      if (playerId !== this.activePlayerId) {
+        if (this.cuedStartSec[playerId] > 0 && !this.seekVerified[playerId]) {
+          this.seekVerified[playerId] = true;
+          this.cuedStartSec[playerId] = 0;
+          const item = this.cuedItems[playerId];
+          if (item && player && typeof player.loadVideoById === 'function') {
+            try {
+              player.loadVideoById({ videoId: item.videoId, startSeconds: 0 });
+              return;
+            } catch (e) {}
+          }
+        }
+        this.preloadNext();
+        return;
+      }
+
+      // Active player ended unexpectedly: switch immediately (using static hold if needed)
+      this.nextVideo(true);
+      return;
     }
-    // YT.PlayerState.PLAYING = 1: video started rolling, reset stuck counter
-    if (event.data === 1 && playerId === this.activePlayerId) {
-      this.stuckSeconds = 0;
-    }
-    // YT.PlayerState.PAUSED = 2: If any video is unexpectedly paused (not the deliberately paused outgoing player), resume immediately
-    if (event.data === 2) {
-      if (!this.deliberatelyPaused[playerId]) {
+
+    // YT.PlayerState.PAUSED = 2 or YT.PlayerState.CUED = 5
+    // Debounce recovery by 1.5s so we never fire redundant playVideo() commands during
+    // normal loadVideoById seek/buffer transitions (which would trigger YouTube's center pause bezel).
+    if ((state === 2 || state === 5) && !this.deliberatelyPaused[playerId]) {
+      this.playingSince[playerId] = 0;
+      clearTimeout(this.resumeTimeouts[playerId]);
+      this.resumeTimeouts[playerId] = setTimeout(() => {
+        if (this.deliberatelyPaused[playerId]) return;
         try {
-          const player = playerId === 'A' ? this.playerA : this.playerB;
-          if (player && typeof player.playVideo === 'function') {
+          if (!player || typeof player.getPlayerState !== 'function') return;
+          const currentState = player.getPlayerState();
+          if ((currentState === 2 || currentState === 5) && typeof player.playVideo === 'function') {
             player.playVideo();
           }
         } catch (e) {}
-      }
-    }
-    // YT.PlayerState.CUED = 5: If a video is in CUED state, immediately command it to play
-    if (event.data === 5) {
-      if (!this.deliberatelyPaused[playerId]) {
-        try {
-          const player = playerId === 'A' ? this.playerA : this.playerB;
-          if (player && typeof player.playVideo === 'function') {
-            if (typeof player.mute === 'function') player.mute();
-            player.playVideo();
-          }
-        } catch (e) {}
-      }
+      }, 1500);
     }
   }
 
   /**
    * Auto-skip unavailable, private, or non-embeddable YouTube videos.
    * Quarantines whichever video actually errored (active or preloading)
-   * so it's excluded from the queue immediately, not just on the next
-   * full rotation.
+   * so it's excluded from the queue immediately.
    */
   handlePlayerError(playerId, event) {
     const errorDescriptions = {
@@ -663,8 +813,8 @@ class PlayerEngine {
       this.pendingClipCache.delete(erroredItem.videoId);
     }
 
-    // Errors from the inactive background preloader: just re-cue a live
-    // replacement, no need to disrupt what's currently on screen.
+    // Errors from the inactive background preloader: immediately load the next live
+    // replacement in the dark without disrupting what is currently playing on screen.
     if (playerId !== this.activePlayerId) {
       console.warn(`Preloader player ${playerId} hit an unplayable video (${reason}): ${erroredItem?.videoId || 'unknown'}. Re-cueing replacement.`);
       this.preloadNext();
@@ -674,32 +824,29 @@ class PlayerEngine {
     this.consecutiveErrorCount++;
     console.warn(`Active player error (${reason}): ${erroredItem?.videoId || 'unknown'}. Consecutive error count: ${this.consecutiveErrorCount}`);
 
-    // If 3 consecutive errors occur, fast-forward 5 live steps ahead in the queue.
-    // Route this through the normal nextVideo() hidden-preload + static-covered
-    // reveal (by pre-seeding currentIndex one before the target and preloading
-    // it now) instead of a raw loadVideoById on the visible player, so this
-    // recovery jump doesn't flash YouTube's own loading/pause UI on screen.
     if (this.consecutiveErrorCount >= 3) {
       console.warn("Multiple consecutive video errors. Fast-forwarding queue...");
       this.consecutiveErrorCount = 0;
       const targetIndex = this.findNextLiveIndex((this.currentIndex + 5) % this.queue.length);
-      this.currentIndex = (targetIndex - 1 + this.queue.length) % this.queue.length;
       this.hasPreloadedForCurrentClip = true;
-      this.preloadNext();
-      this.nextVideo();
+      this.preloadNext(targetIndex);
+      this.nextVideo(true);
       return;
     }
 
-    // INSTANTLY advance to next working video with 0ms delay
-    this.nextVideo();
+    this.nextVideo(true);
   }
 
   /**
-   * Cleanly destroy YouTube players to prevent memory leaks in kiosk mode
+   * Cleanly destroy YouTube players to prevent memory leaks
    */
   destroy() {
     this.clearClipTimer();
     clearTimeout(this.autoplayFallbackTimeout);
+    clearTimeout(this.bakePollTimer);
+    clearTimeout(this.postSwapPauseTimeout);
+    clearTimeout(this.resumeTimeouts.A);
+    clearTimeout(this.resumeTimeouts.B);
 
     try {
       if (this.playerA && typeof this.playerA.destroy === 'function') {
@@ -724,14 +871,6 @@ class PlayerEngine {
     this.clipTimer = setInterval(() => {
       this.elapsedSeconds++;
 
-      if (this.onProgressCallback) {
-        this.onProgressCallback({
-          elapsed: this.elapsedSeconds,
-          cutoff: this.activeCutoffSec,
-          currentVideo: this.currentVideoItem
-        });
-      }
-
       // Query live player state, duration, and current position
       const activePlayer = this.getActivePlayer();
       let duration = 0;
@@ -740,6 +879,7 @@ class PlayerEngine {
       try {
         if (activePlayer && typeof activePlayer.getPlayerState === 'function') {
           playerState = activePlayer.getPlayerState();
+          this.playerStates[this.activePlayerId] = playerState;
         }
         if (activePlayer && typeof activePlayer.getDuration === 'function') {
           duration = activePlayer.getDuration();
@@ -749,43 +889,70 @@ class PlayerEngine {
         }
       } catch (e) {}
 
-      // If active video is stuck in UNSTARTED (-1), CUED (5), or unexpectedly frozen
+      // Dynamically clamp activeCutoffSec based on the video's actual remaining duration
+      // minus an end-screen safety buffer (12s on longer videos, 3s on short commercials).
+      // This ensures we:
+      // 1) Never reach the final seconds where YouTube renders End Screen recommendation cards
+      // 2) Trigger JIT background preloading 9s before the video's actual end!
+      let isNearEnd = false;
+      if (duration > 0 && currentTime > 0) {
+        const endMarginSec = duration >= 60 ? 12 : (duration >= 35 ? 6 : 3);
+        const safeRemainingSec = Math.floor(duration - currentTime - endMarginSec);
+        if (safeRemainingSec <= 0) {
+          isNearEnd = true;
+        } else if (this.elapsedSeconds + safeRemainingSec < this.activeCutoffSec) {
+          this.activeCutoffSec = Math.max(this.elapsedSeconds + 1, this.elapsedSeconds + safeRemainingSec);
+        }
+      }
+
+      if (this.onProgressCallback) {
+        this.onProgressCallback({
+          elapsed: this.elapsedSeconds,
+          cutoff: this.activeCutoffSec,
+          currentVideo: this.currentVideoItem
+        });
+      }
+
+      // Monitor for genuinely wedged active videos without spamming playVideo() on every tick
       if (playerState !== 1 && playerState !== 3) {
         this.stuckSeconds = (this.stuckSeconds || 0) + 1;
-        try {
-          if (activePlayer && typeof activePlayer.mute === 'function') activePlayer.mute();
-          if (activePlayer && typeof activePlayer.playVideo === 'function') activePlayer.playVideo();
-        } catch (e) {}
+        if (this.stuckSeconds === 3) {
+          try {
+            if (activePlayer && typeof activePlayer.playVideo === 'function') {
+              activePlayer.playVideo();
+            }
+          } catch (e) {}
+        }
 
-        // If stuck for 4 seconds, mark dead and automatically advance with CRT static glitch
-        if (this.stuckSeconds >= 4) {
+        if (this.stuckSeconds >= 6) {
           console.warn(`Video ${this.currentVideoItem?.videoId} stuck in state ${playerState}. Skipping...`);
           this.stuckSeconds = 0;
           if (this.currentVideoItem) {
             catalogManager.markVideoDead(this.currentVideoItem.videoId, this.currentVideoItem.title);
           }
-          this.nextVideo();
+          this.nextVideo(true);
           return;
         }
       } else {
         this.stuckSeconds = 0;
       }
 
-      // JIT background pre-loading: start background player 7s before channel switch
-      // so YouTube's 5.0-second startup bezel expires 100% in the dark!
-      const leadTime = 7;
-      if (this.elapsedSeconds >= Math.max(1, this.activeCutoffSec - leadTime) && !this.hasPreloadedForCurrentClip) {
+      // JIT background pre-loading: start background player 9s before channel switch
+      // so YouTube's startup bezel expires 100% in the dark!
+      if (this.elapsedSeconds >= Math.max(1, this.activeCutoffSec - PRELOAD_LEAD_TIME_SEC) && !this.hasPreloadedForCurrentClip) {
         this.hasPreloadedForCurrentClip = true;
         this.preloadNext();
       }
 
-      // Auto-next if elapsed reaches cutoff OR if video is within 1.5s of ending
+      // Auto-next when elapsed reaches cutoff or video approaches end margin
       const isCutoff = this.activeCutoffSec > 0 && this.elapsedSeconds >= this.activeCutoffSec;
-      const isNearEnd = duration > 0 && currentTime > 0 && (duration - currentTime <= 1.5);
 
-      if (isCutoff || isNearEnd) {
-        console.log(`Auto-advancing stream (Cutoff: ${isCutoff}, NearEnd: ${isNearEnd})...`);
-        this.nextVideo();
+      if (isNearEnd) {
+        this.nextVideo(true);
+      } else if (isCutoff) {
+        // If background player is baked (or we've granted up to 6s of extra grace time), switch!
+        const graceExpired = this.elapsedSeconds >= this.activeCutoffSec + 6;
+        this.nextVideo(graceExpired);
       }
     }, 1000);
   }

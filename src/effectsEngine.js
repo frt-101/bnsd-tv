@@ -125,15 +125,55 @@ class EffectsEngine {
       }
       if (this.animationFrameId) {
         cancelAnimationFrame(this.animationFrameId);
+        this.animationFrameId = null;
       }
     }, durationMs);
   }
 
   /**
+   * Hold continuous CRT static noise while waiting for an unbaked background player
+   * (e.g. if the active video ended unexpectedly or errored before the next clip finished preloading).
+   */
+  startStaticHold() {
+    clearTimeout(this.staticPeakTimeout);
+    clearTimeout(this.staticEndTimeout);
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+
+    this.isStaticActive = true;
+    if (this.canvas) {
+      this.canvas.classList.add('active');
+    }
+    this.renderNoiseFrame();
+  }
+
+  /**
+   * Release continuous CRT static hold after executing the player swap under cover of static.
+   */
+  stopStaticHold(onSwap = null, fadeTailMs = 120) {
+    if (onSwap) onSwap();
+
+    clearTimeout(this.staticEndTimeout);
+    this.staticEndTimeout = setTimeout(() => {
+      this.isStaticActive = false;
+      if (this.canvas) {
+        this.canvas.classList.remove('active');
+      }
+      if (this.animationFrameId) {
+        cancelAnimationFrame(this.animationFrameId);
+        this.animationFrameId = null;
+      }
+    }, fadeTailMs);
+  }
+
+  /**
    * Trigger CRT Power-On Warmup & Tuning Sequence (Initial Boot / Refresh)
    * Displays centered BNSD TV header, vintage cathode ray turn-on beam & deep blue screen with glowing phosphor green OSD.
+   * Waits for both durationMs AND optional isReadyCheck() (up to a safe ceiling) so YouTube's initial startup bezel is 100% gone.
    */
-  triggerWarmup(durationMs = 5800, channelNum = '03', onComplete = null) {
+  triggerWarmup(durationMs = 5800, channelNum = '03', onComplete = null, isReadyCheck = null) {
     const poweronOverlay = document.getElementById('crt-poweron-overlay');
     const subLabel = document.getElementById('poweron-channel-sub');
     const statusMsg = document.getElementById('poweron-status-msg');
@@ -167,15 +207,30 @@ class EffectsEngine {
       if (meterEl) meterEl.textContent = '[ ■■■■■■■■■■■■ ]';
     }, 3900);
 
-    // After warmup duration, smoothly dissolve the power-on screen and reveal running stream
-    setTimeout(() => {
+    const startTime = Date.now();
+    const maxWaitMs = durationMs + 4500; // Safety ceiling so warmup never hangs if offline
+
+    const finishWarmup = () => {
       clearTimeout(t1);
       clearTimeout(t2);
       if (poweronOverlay) {
         poweronOverlay.classList.remove('active');
       }
       if (onComplete) onComplete();
-    }, durationMs);
+    };
+
+    const pollReady = () => {
+      const elapsed = Date.now() - startTime;
+      const ready = typeof isReadyCheck === 'function' ? isReadyCheck() : true;
+      if (ready || elapsed >= maxWaitMs) {
+        finishWarmup();
+      } else {
+        setTimeout(pollReady, 200);
+      }
+    };
+
+    // After minimum warmup duration, check if player is baked before revealing
+    setTimeout(pollReady, durationMs);
   }
 
   /**

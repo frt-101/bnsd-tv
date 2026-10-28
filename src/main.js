@@ -98,34 +98,19 @@ async function bootstrapApp() {
   if (eraBadge) eraBadge.textContent = 'POWER ON';
   if (catLabel) catLabel.textContent = `TUNING CH ${chNum} BROADCAST...`;
 
-  effectsEngine.triggerWarmup(5800, chNum, () => {
-    playerEngine.updateOSD(playerEngine.currentVideoItem);
-  });
+  effectsEngine.triggerWarmup(
+    5800,
+    chNum,
+    () => {
+      playerEngine.updateOSD(playerEngine.currentVideoItem);
+    },
+    () => playerEngine.isActivePlayerBaked()
+  );
 
   const randomStartIndex = queue.length > 0 ? Math.floor(Math.random() * queue.length) : 0;
   playerEngine.init(queue, randomStartIndex, () => {
     playerEngine.startStream(queue, randomStartIndex);
     startWatchdog();
-  });
-
-  // Prevent browser from ever holding focus on YouTube iframes
-  window.addEventListener('blur', () => {
-    if (document.activeElement && document.activeElement.tagName === 'IFRAME') {
-      document.activeElement.blur();
-      window.focus();
-    }
-  });
-
-  document.getElementById('player-shield')?.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    window.focus();
-    const activePlayer = playerEngine.getActivePlayer();
-    if (activePlayer && typeof activePlayer.playVideo === 'function') {
-      try {
-        if (typeof activePlayer.mute === 'function') activePlayer.mute();
-        activePlayer.playVideo();
-      } catch (err) {}
-    }
   });
 }
 
