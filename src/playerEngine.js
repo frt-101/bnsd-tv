@@ -3,13 +3,13 @@ import { catalogManager } from './catalogManager.js';
 
 // YouTube embedded players display their title bar, channel watermark, and initial
 // play/pause bezel for ~4.0–4.5s after entering YT.PlayerState.PLAYING (1).
-// Requiring at least 5.2s of active PLAYING time in the hidden background player
-// guarantees 100% of YouTube's startup UI has disappeared before any channel swap.
-const MIN_HIDDEN_PLAY_BAKE_MS = 5200;
+// Requiring a full 6.0s of continuous, uninterrupted PLAYING time in the background
+// player guarantees 100% of YouTube's startup UI has disappeared before any swap.
+const MIN_HIDDEN_PLAY_BAKE_MS = 6000;
 
 // Lead time (in seconds before clip cutoff) to start loading & playing the next
-// video in the hidden background container (~2-3s network buffer + 5.2s bake).
-const PRELOAD_LEAD_TIME_SEC = 9;
+// video in the background container (~2-3s network buffer + 6.0s bake + safety margin).
+const PRELOAD_LEAD_TIME_SEC = 13;
 
 class PlayerEngine {
   constructor() {
@@ -428,8 +428,8 @@ class PlayerEngine {
     // 3. Derive duration based on current session mood and video category
     if (this.currentSessionType === 'browse_flurry' && this.zapBurstEnabled) {
       this.isZapClip = true;
-      // Quick remote clicks: 9 to 12 seconds (gives hidden preloader full buffer + 5.2s bake window)
-      maxDurationSec = Math.floor(Math.random() * 4) + 9;
+      // Quick remote clicks: 14 to 18 seconds (gives hidden preloader full buffer + 6.0s bake window)
+      maxDurationSec = Math.floor(Math.random() * 5) + 14;
       if (this.randomOffsetEnabled && startSec === 0) {
         startSec = this.getSmartVisualSeekOffset(cat);
       }
@@ -549,7 +549,7 @@ class PlayerEngine {
   /**
    * Advance to next video in queue with CRT channel static glitch.
    * Guarantees the incoming background player has been actively PLAYING in the dark
-   * for >= 5.2s before revealing it, so YouTube UI overlays are 100% impossible.
+   * for >= 6.0s before revealing it, so YouTube UI overlays are 100% impossible.
    */
   nextVideo(forceImmediateStatic = false) {
     if (!this.queue || this.queue.length === 0) return;
@@ -561,7 +561,7 @@ class PlayerEngine {
       this.preloadNext();
     }
 
-    // Fast path: background player has ALREADY played for >= 5.2s in the dark!
+    // Fast path: background player has ALREADY played continuously for >= 6.0s in the dark!
     // Execute a crisp 160ms/240ms CRT static glitch and swap at peak static.
     if (this.isInactivePlayerBaked()) {
       this.isTransitioning = true;
@@ -579,7 +579,7 @@ class PlayerEngine {
     }
 
     // If the active player is still playing normally and we aren't forced to cut away immediately,
-    // let the active clip continue rolling for a moment while the background player finishes baking.
+    // let the active clip continue rolling smoothly on screen while the background player finishes baking.
     const activeState = this.playerStates[this.activePlayerId];
     if (!forceImmediateStatic && activeState === 1) {
       return;
@@ -587,7 +587,7 @@ class PlayerEngine {
 
     // Forced transition (e.g. active video ended unexpectedly, errored, or manual skip)
     // while the background player is still buffering/baking:
-    // Hold authentic CRT tuning static over the screen until the incoming player is baked!
+    // Hold authentic CRT tuning static over the screen until the incoming player is 100% baked!
     this.isTransitioning = true;
     this.clearClipTimer();
     clearTimeout(this.bakePollTimer);
@@ -601,18 +601,44 @@ class PlayerEngine {
 
     effectsEngine.startStaticHold();
 
-    const holdStart = Date.now();
-    const maxHoldMs = 7500;
-
     const waitForBake = () => {
-      const waited = Date.now() - holdStart;
-      if (this.isInactivePlayerBaked() || waited >= maxHoldMs) {
+      const inactiveId = this.activePlayerId === 'A' ? 'B' : 'A';
+      const inactivePlayer = this.getInactivePlayer();
+
+      // Poll live state in case a state event was missed
+      try {
+        if (inactivePlayer && typeof inactivePlayer.getPlayerState === 'function') {
+          const st = inactivePlayer.getPlayerState();
+          if (st === 1) {
+            if (this.playerStates[inactiveId] !== 1 || this.playingSince[inactiveId] === 0) {
+              this.playingSince[inactiveId] = Date.now();
+            }
+            this.playerStates[inactiveId] = 1;
+          } else {
+            this.playerStates[inactiveId] = st;
+            this.playingSince[inactiveId] = 0;
+          }
+        }
+      } catch (e) {}
+
+      if (this.isInactivePlayerBaked()) {
         effectsEngine.stopStaticHold(() => {
           this.completeChannelSwap(false); // OSD already updated when static hold began
         }, 140);
-      } else {
-        this.bakePollTimer = setTimeout(waitForBake, 150);
+        return;
       }
+
+      // If the background preloader hasn't entered PLAYING within 5.5s, skip it and tune to the next clip
+      const sincePreload = Date.now() - (this.preloadedAt || Date.now());
+      if (this.playerStates[inactiveId] !== 1 && sincePreload >= 5500) {
+        console.warn(`Background preloader (${inactiveId}) stalled in state ${this.playerStates[inactiveId]} during static hold. Advancing to next video...`);
+        this.preloadNext();
+        if (this.preloadedIndex !== null && this.queue[this.preloadedIndex]) {
+          this.updateOSD(this.queue[this.preloadedIndex]);
+        }
+      }
+
+      this.bakePollTimer = setTimeout(waitForBake, 150);
     };
 
     this.bakePollTimer = setTimeout(waitForBake, 150);
@@ -624,6 +650,7 @@ class PlayerEngine {
   completeChannelSwap(shouldUpdateOSD = true) {
     this.isTransitioning = false;
     clearTimeout(this.bakePollTimer);
+    clearTimeout(this.postSwapPauseTimeout);
 
     // 1. Swap active player container focus (brings already-running background player to front)
     this.toggleActivePlayerFocus();
@@ -655,25 +682,12 @@ class PlayerEngine {
     // 5. Start clip timing monitor
     this.startClipTimer();
 
-    // 6. If clip is short (<= 12s), preload the next video immediately on the now-hidden player.
-    // Otherwise, pause the hidden outgoing player 250ms after the swap is complete to save CPU.
-    const outgoingPlayerId = this.activePlayerId === 'A' ? 'B' : 'A';
+    // 6. If clip is within the preload window, immediately start preloading the next video
+    // on the now-hidden player. Note: we never call pauseVideo() on the outgoing player
+    // because pausing a YouTube embed arms its center pause/play bezel on next resume.
     if (this.activeCutoffSec <= PRELOAD_LEAD_TIME_SEC + 3) {
       this.hasPreloadedForCurrentClip = true;
       this.preloadNext();
-    } else {
-      clearTimeout(this.postSwapPauseTimeout);
-      this.postSwapPauseTimeout = setTimeout(() => {
-        if (!this.hasPreloadedForCurrentClip && this.activePlayerId !== outgoingPlayerId) {
-          this.deliberatelyPaused[outgoingPlayerId] = true;
-          const outgoingPlayer = this.getInactivePlayer();
-          if (outgoingPlayer && typeof outgoingPlayer.pauseVideo === 'function') {
-            try {
-              outgoingPlayer.pauseVideo();
-            } catch (e) {}
-          }
-        }
-      }, 250);
     }
   }
 
@@ -727,15 +741,18 @@ class PlayerEngine {
           const cur = typeof player.getCurrentTime === 'function' ? player.getCurrentTime() : 0;
           if (dur > 0) {
             this.seekVerified[playerId] = true;
-            if (this.cuedStartSec[playerId] > 0 && (dur - cur) < 22) {
-              if (dur >= 15 && typeof player.seekTo === 'function') {
-                // Rewind short clip to 0s while still in the dark
-                this.cuedStartSec[playerId] = 0;
-                this.playingSince[playerId] = Date.now();
-                player.seekTo(0, true);
-              } else if (playerId !== this.activePlayerId) {
-                // Ultra-short snippet in background preloader: cue next video instead
-                this.preloadNext();
+            if (this.cuedStartSec[playerId] > 0 && (dur - cur) < 24) {
+              if (playerId !== this.activePlayerId) {
+                if (dur >= 18 && typeof player.loadVideoById === 'function' && this.cuedItems[playerId]) {
+                  // Rewind short clip to 0s in the dark and reset bake timer cleanly
+                  this.cuedStartSec[playerId] = 0;
+                  this.playingSince[playerId] = 0;
+                  this.preloadedAt = Date.now();
+                  player.loadVideoById({ videoId: this.cuedItems[playerId].videoId, startSeconds: 0 });
+                } else {
+                  // Ultra-short snippet in background preloader: cue next video instead
+                  this.preloadNext();
+                }
               }
             }
           }
@@ -744,10 +761,12 @@ class PlayerEngine {
       return;
     }
 
+    // Any non-PLAYING state (-1 UNSTARTED, 0 ENDED, 2 PAUSED, 3 BUFFERING, 5 CUED)
+    // resets the continuous-play bake timer so post-buffer/post-seek bezels never leak through.
+    this.playingSince[playerId] = 0;
+
     // YT.PlayerState.ENDED = 0
     if (state === 0) {
-      this.playingSince[playerId] = 0;
-
       // If the hidden background preloader hit ENDED (e.g. random startSec overshot the
       // total duration of a short clip), either rewind to 0s or preload the next video so
       // an ENDED player with YouTube's "More Videos" grid is NEVER swapped onto the screen.
@@ -755,6 +774,7 @@ class PlayerEngine {
         if (this.cuedStartSec[playerId] > 0 && !this.seekVerified[playerId]) {
           this.seekVerified[playerId] = true;
           this.cuedStartSec[playerId] = 0;
+          this.preloadedAt = Date.now();
           const item = this.cuedItems[playerId];
           if (item && player && typeof player.loadVideoById === 'function') {
             try {
@@ -773,21 +793,32 @@ class PlayerEngine {
     }
 
     // YT.PlayerState.PAUSED = 2 or YT.PlayerState.CUED = 5
-    // Debounce recovery by 1.5s so we never fire redundant playVideo() commands during
-    // normal loadVideoById seek/buffer transitions (which would trigger YouTube's center pause bezel).
+    // Only auto-invoke playVideo() on the HIDDEN background player (never on the visible
+    // active player, where calling playVideo() would flash YouTube's center || modal).
     if ((state === 2 || state === 5) && !this.deliberatelyPaused[playerId]) {
-      this.playingSince[playerId] = 0;
       clearTimeout(this.resumeTimeouts[playerId]);
-      this.resumeTimeouts[playerId] = setTimeout(() => {
-        if (this.deliberatelyPaused[playerId]) return;
-        try {
-          if (!player || typeof player.getPlayerState !== 'function') return;
-          const currentState = player.getPlayerState();
-          if ((currentState === 2 || currentState === 5) && typeof player.playVideo === 'function') {
-            player.playVideo();
+      if (playerId !== this.activePlayerId) {
+        this.resumeTimeouts[playerId] = setTimeout(() => {
+          if (this.deliberatelyPaused[playerId] || playerId === this.activePlayerId) return;
+          try {
+            if (!player || typeof player.getPlayerState !== 'function') return;
+            const currentState = player.getPlayerState();
+            if ((currentState === 2 || currentState === 5) && typeof player.playVideo === 'function') {
+              this.playingSince[playerId] = 0;
+              this.preloadedAt = Date.now();
+              player.playVideo();
+            }
+          } catch (e) {}
+        }, 1200);
+      } else {
+        // If the visible active player ever enters PAUSED/CUED, switch channels rather than
+        // calling playVideo() on a visible player.
+        this.resumeTimeouts[playerId] = setTimeout(() => {
+          if (playerId === this.activePlayerId && this.playerStates[playerId] !== 1) {
+            this.nextVideo(true);
           }
-        } catch (e) {}
-      }, 1500);
+        }, 1000);
+      }
     }
   }
 
@@ -893,7 +924,7 @@ class PlayerEngine {
       // minus an end-screen safety buffer (12s on longer videos, 3s on short commercials).
       // This ensures we:
       // 1) Never reach the final seconds where YouTube renders End Screen recommendation cards
-      // 2) Trigger JIT background preloading 9s before the video's actual end!
+      // 2) Trigger JIT background preloading well before the video's actual end!
       let isNearEnd = false;
       if (duration > 0 && currentTime > 0) {
         const endMarginSec = duration >= 60 ? 12 : (duration >= 35 ? 6 : 3);
@@ -913,18 +944,11 @@ class PlayerEngine {
         });
       }
 
-      // Monitor for genuinely wedged active videos without spamming playVideo() on every tick
+      // Monitor for genuinely wedged active videos (never call playVideo() on a visible player,
+      // which would flash YouTube's center pause/play modal; instead skip to the next channel)
       if (playerState !== 1 && playerState !== 3) {
         this.stuckSeconds = (this.stuckSeconds || 0) + 1;
-        if (this.stuckSeconds === 3) {
-          try {
-            if (activePlayer && typeof activePlayer.playVideo === 'function') {
-              activePlayer.playVideo();
-            }
-          } catch (e) {}
-        }
-
-        if (this.stuckSeconds >= 6) {
+        if (this.stuckSeconds >= 5) {
           console.warn(`Video ${this.currentVideoItem?.videoId} stuck in state ${playerState}. Skipping...`);
           this.stuckSeconds = 0;
           if (this.currentVideoItem) {
@@ -937,22 +961,56 @@ class PlayerEngine {
         this.stuckSeconds = 0;
       }
 
-      // JIT background pre-loading: start background player 9s before channel switch
-      // so YouTube's startup bezel expires 100% in the dark!
-      if (this.elapsedSeconds >= Math.max(1, this.activeCutoffSec - PRELOAD_LEAD_TIME_SEC) && !this.hasPreloadedForCurrentClip) {
+      // JIT background pre-loading: start background player 13s before channel switch
+      // (or whenever <= 18s of total file duration remain) so YouTube's startup bezel
+      // expires 100% in the background!
+      const rawRemainingSec = duration > 0 && currentTime > 0 ? (duration - currentTime) : 999;
+      if (
+        !this.hasPreloadedForCurrentClip &&
+        (this.elapsedSeconds >= Math.max(1, this.activeCutoffSec - PRELOAD_LEAD_TIME_SEC) || rawRemainingSec <= 18)
+      ) {
         this.hasPreloadedForCurrentClip = true;
         this.preloadNext();
       }
 
-      // Auto-next when elapsed reaches cutoff or video approaches end margin
+      // Background preloader watchdog: if a preloading video hasn't entered PLAYING (1)
+      // within 5.5s in the background, silently skip it and load the next queued video
+      // while the current active clip keeps playing uninterrupted on screen.
+      if (this.hasPreloadedForCurrentClip && !this.isTransitioning) {
+        const inactiveId = this.activePlayerId === 'A' ? 'B' : 'A';
+        const inactivePlayer = this.getInactivePlayer();
+        try {
+          if (inactivePlayer && typeof inactivePlayer.getPlayerState === 'function') {
+            const st = inactivePlayer.getPlayerState();
+            if (st === 1) {
+              if (this.playerStates[inactiveId] !== 1 || this.playingSince[inactiveId] === 0) {
+                this.playingSince[inactiveId] = Date.now();
+              }
+              this.playerStates[inactiveId] = 1;
+            } else {
+              this.playerStates[inactiveId] = st;
+              this.playingSince[inactiveId] = 0;
+            }
+          }
+        } catch (e) {}
+
+        const sincePreload = Date.now() - (this.preloadedAt || Date.now());
+        if (this.playerStates[inactiveId] !== 1 && sincePreload >= 5500) {
+          console.warn(`Background preloader (${inactiveId}) did not start within 5.5s (state=${this.playerStates[inactiveId]}). Skipping to next background video...`);
+          this.preloadNext();
+        }
+      }
+
+      // Auto-next when elapsed reaches cutoff or video approaches end margin.
+      // When isCutoff is reached and the active video is still playing normally (!isNearEnd),
+      // we call nextVideo(false) so it NEVER cuts to a long static hold; instead it lets the
+      // current clip roll until isInactivePlayerBaked() is true, then zaps cleanly!
       const isCutoff = this.activeCutoffSec > 0 && this.elapsedSeconds >= this.activeCutoffSec;
 
       if (isNearEnd) {
         this.nextVideo(true);
       } else if (isCutoff) {
-        // If background player is baked (or we've granted up to 6s of extra grace time), switch!
-        const graceExpired = this.elapsedSeconds >= this.activeCutoffSec + 6;
-        this.nextVideo(graceExpired);
+        this.nextVideo(false);
       }
     }, 1000);
   }
