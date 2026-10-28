@@ -34,15 +34,8 @@ class EffectsEngine {
 
   resizeCanvas() {
     if (!this.canvas) return;
-    // CRT static noise is inherently coarse retro pixel grain.
-    // Capping the internal canvas resolution to a fixed low-res target (320px width)
-    // reduces pixel buffer size from ~518k pixels (at 1080p) or ~2.07M pixels (at 4K) to ~57.6k pixels.
-    // CSS automatically stretches this canvas across the entire viewport, producing authentic CRT noise
-    // while reducing loop iterations, memory allocations, and GPU upload overhead by ~89%.
-    const maxTargetWidth = 320;
-    const aspect = window.innerHeight > 0 ? window.innerWidth / window.innerHeight : (16 / 9);
-    this.canvas.width = maxTargetWidth;
-    this.canvas.height = Math.max(1, Math.floor(maxTargetWidth / aspect));
+    this.canvas.width = Math.floor(window.innerWidth / 2);
+    this.canvas.height = Math.floor(window.innerHeight / 2);
   }
 
   /**
@@ -64,7 +57,7 @@ class EffectsEngine {
       const buffer = new Uint32Array(imgData.data.buffer);
       const len = buffer.length;
       for (let i = 0; i < len; i++) {
-        const color = (Math.random() * 255) | 0;
+        const color = Math.floor(Math.random() * 255);
         buffer[i] = (255 << 24) | (color << 16) | (color << 8) | color;
       }
       this.noiseFrames.push(imgData);
@@ -125,55 +118,15 @@ class EffectsEngine {
       }
       if (this.animationFrameId) {
         cancelAnimationFrame(this.animationFrameId);
-        this.animationFrameId = null;
       }
     }, durationMs);
   }
 
   /**
-   * Hold continuous CRT static noise while waiting for an unbaked background player
-   * (e.g. if the active video ended unexpectedly or errored before the next clip finished preloading).
-   */
-  startStaticHold() {
-    clearTimeout(this.staticPeakTimeout);
-    clearTimeout(this.staticEndTimeout);
-    if (this.animationFrameId) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
-    }
-
-    this.isStaticActive = true;
-    if (this.canvas) {
-      this.canvas.classList.add('active');
-    }
-    this.renderNoiseFrame();
-  }
-
-  /**
-   * Release continuous CRT static hold after executing the player swap under cover of static.
-   */
-  stopStaticHold(onSwap = null, fadeTailMs = 120) {
-    if (onSwap) onSwap();
-
-    clearTimeout(this.staticEndTimeout);
-    this.staticEndTimeout = setTimeout(() => {
-      this.isStaticActive = false;
-      if (this.canvas) {
-        this.canvas.classList.remove('active');
-      }
-      if (this.animationFrameId) {
-        cancelAnimationFrame(this.animationFrameId);
-        this.animationFrameId = null;
-      }
-    }, fadeTailMs);
-  }
-
-  /**
    * Trigger CRT Power-On Warmup & Tuning Sequence (Initial Boot / Refresh)
    * Displays centered BNSD TV header, vintage cathode ray turn-on beam & deep blue screen with glowing phosphor green OSD.
-   * Waits for both durationMs AND optional isReadyCheck() (up to a safe ceiling) so YouTube's initial startup bezel is 100% gone.
    */
-  triggerWarmup(durationMs = 5800, channelNum = '03', onComplete = null, isReadyCheck = null) {
+  triggerWarmup(durationMs = 5800, channelNum = '03', onComplete = null) {
     const poweronOverlay = document.getElementById('crt-poweron-overlay');
     const subLabel = document.getElementById('poweron-channel-sub');
     const statusMsg = document.getElementById('poweron-status-msg');
@@ -207,30 +160,15 @@ class EffectsEngine {
       if (meterEl) meterEl.textContent = '[ ■■■■■■■■■■■■ ]';
     }, 3900);
 
-    const startTime = Date.now();
-    const maxWaitMs = durationMs + 4500; // Safety ceiling so warmup never hangs if offline
-
-    const finishWarmup = () => {
+    // After warmup duration, smoothly dissolve the power-on screen and reveal running stream
+    setTimeout(() => {
       clearTimeout(t1);
       clearTimeout(t2);
       if (poweronOverlay) {
         poweronOverlay.classList.remove('active');
       }
       if (onComplete) onComplete();
-    };
-
-    const pollReady = () => {
-      const elapsed = Date.now() - startTime;
-      const ready = typeof isReadyCheck === 'function' ? isReadyCheck() : true;
-      if (ready || elapsed >= maxWaitMs) {
-        finishWarmup();
-      } else {
-        setTimeout(pollReady, 200);
-      }
-    };
-
-    // After minimum warmup duration, check if player is baked before revealing
-    setTimeout(pollReady, durationMs);
+    }, durationMs);
   }
 
   /**
