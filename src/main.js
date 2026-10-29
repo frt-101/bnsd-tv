@@ -98,9 +98,15 @@ async function bootstrapApp() {
   if (eraBadge) eraBadge.textContent = 'POWER ON';
   if (catLabel) catLabel.textContent = `TUNING CH ${chNum} BROADCAST...`;
 
-  effectsEngine.triggerWarmup(5800, chNum, () => {
-    playerEngine.updateOSD(playerEngine.currentVideoItem);
-  });
+  effectsEngine.triggerWarmup(
+    5800,
+    chNum,
+    () => {
+      playerEngine.updateOSD(playerEngine.currentVideoItem);
+    },
+    () => playerEngine.isPlayerModalFree(playerEngine.activePlayerId),
+    11000
+  );
 
   const randomStartIndex = queue.length > 0 ? Math.floor(Math.random() * queue.length) : 0;
   playerEngine.init(queue, randomStartIndex, () => {

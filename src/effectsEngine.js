@@ -16,9 +16,13 @@ class EffectsEngine {
     // Pre-allocated noise frame cache for smooth, low-CPU CRT glitches
     this.noiseFrames = [];
     this.noiseFrameIndex = 0;
+    this.isWarmupActive = false;
+    this.staticHoldInterval = null;
+    this.warmupWaitInterval = null;
   }
 
   init() {
+    window.effectsEngine = this;
     this.canvas = document.getElementById('crt-static-canvas');
     if (!this.canvas) return;
 
@@ -82,20 +86,27 @@ class EffectsEngine {
   }
 
   /**
-   * Trigger CRT channel switch static glitch (duration: 150ms - 300ms)
+   * Trigger CRT channel switch static glitch (duration: 150ms - 300ms).
+   * If waitUntilReady() is provided and returns false, holds the CRT static screen
+   * until waitUntilReady() returns true (up to maxWaitMs safety cap) so an un-preroll'd
+   * YouTube player with a visible Play/Pause modal is never revealed on screen.
    */
-  triggerChannelSwitch(durationMs = 250, onPeak = null) {
-    if (!this.staticFXEnabled) {
-      if (onPeak) onPeak();
-      return;
-    }
-
+  triggerChannelSwitch(durationMs = 250, onPeak = null, waitUntilReady = null, maxWaitMs = 6500) {
     // Clear any active static timeouts/frames to prevent overlapping animations or canvas lockup
     clearTimeout(this.staticPeakTimeout);
     clearTimeout(this.staticEndTimeout);
+    clearInterval(this.staticHoldInterval);
+    this.staticHoldInterval = null;
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
+    }
+
+    const isImmediatelyReady = typeof waitUntilReady !== 'function' || Boolean(waitUntilReady());
+
+    if (!this.staticFXEnabled && isImmediatelyReady) {
+      if (onPeak) onPeak();
+      return;
     }
 
     this.isStaticActive = true;
@@ -105,28 +116,48 @@ class EffectsEngine {
 
     this.renderNoiseFrame();
 
-    // Execute video switch callback halfway through static burst
-    this.staticPeakTimeout = setTimeout(() => {
+    const finishSwitch = () => {
       if (onPeak) onPeak();
-    }, Math.floor(durationMs / 2));
+      const tailMs = Math.max(90, Math.floor(durationMs / 2));
+      this.staticEndTimeout = setTimeout(() => {
+        this.isStaticActive = false;
+        if (this.canvas) {
+          this.canvas.classList.remove('active');
+        }
+        if (this.animationFrameId) {
+          cancelAnimationFrame(this.animationFrameId);
+          this.animationFrameId = null;
+        }
+      }, tailMs);
+    };
 
-    // Hide static canvas and stop noise animation frame
-    this.staticEndTimeout = setTimeout(() => {
-      this.isStaticActive = false;
-      if (this.canvas) {
-        this.canvas.classList.remove('active');
-      }
-      if (this.animationFrameId) {
-        cancelAnimationFrame(this.animationFrameId);
-      }
-    }, durationMs);
+    if (isImmediatelyReady) {
+      // Standard fast channel switch: swap halfway through static burst
+      this.staticPeakTimeout = setTimeout(finishSwitch, Math.floor(durationMs / 2));
+    } else {
+      // Hold static while incoming background player finishes its 4.8s modal fade-out
+      const holdStartedAt = Date.now();
+      this.staticHoldInterval = setInterval(() => {
+        const ready = Boolean(waitUntilReady());
+        const timedOut = (Date.now() - holdStartedAt) >= maxWaitMs;
+        if (ready || timedOut) {
+          clearInterval(this.staticHoldInterval);
+          this.staticHoldInterval = null;
+          finishSwitch();
+        }
+      }, 100);
+    }
   }
 
   /**
    * Trigger CRT Power-On Warmup & Tuning Sequence (Initial Boot / Refresh)
    * Displays centered BNSD TV header, vintage cathode ray turn-on beam & deep blue screen with glowing phosphor green OSD.
+   * Holds overlay until both minDurationMs has elapsed AND isReadyCheck() returns true (up to maxWaitMs).
    */
-  triggerWarmup(durationMs = 5800, channelNum = '03', onComplete = null) {
+  triggerWarmup(durationMs = 5800, channelNum = '03', onComplete = null, isReadyCheck = null, maxWaitMs = 11000) {
+    this.isWarmupActive = true;
+    clearInterval(this.warmupWaitInterval);
+
     const poweronOverlay = document.getElementById('crt-poweron-overlay');
     const subLabel = document.getElementById('poweron-channel-sub');
     const statusMsg = document.getElementById('poweron-status-msg');
@@ -160,14 +191,32 @@ class EffectsEngine {
       if (meterEl) meterEl.textContent = '[ ■■■■■■■■■■■■ ]';
     }, 3900);
 
-    // After warmup duration, smoothly dissolve the power-on screen and reveal running stream
-    setTimeout(() => {
+    const bootStartedAt = Date.now();
+    const dissolveWarmup = () => {
       clearTimeout(t1);
       clearTimeout(t2);
+      clearInterval(this.warmupWaitInterval);
+      this.warmupWaitInterval = null;
+      this.isWarmupActive = false;
       if (poweronOverlay) {
         poweronOverlay.classList.remove('active');
       }
       if (onComplete) onComplete();
+    };
+
+    // After minimum warmup duration, verify active player has finished its 4.8s modal fade-out before dissolving
+    setTimeout(() => {
+      if (typeof isReadyCheck !== 'function' || Boolean(isReadyCheck())) {
+        dissolveWarmup();
+        return;
+      }
+      this.warmupWaitInterval = setInterval(() => {
+        const ready = Boolean(isReadyCheck());
+        const timedOut = (Date.now() - bootStartedAt) >= maxWaitMs;
+        if (ready || timedOut) {
+          dissolveWarmup();
+        }
+      }, 120);
     }, durationMs);
   }
 

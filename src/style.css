@@ -90,9 +90,9 @@ html, body {
 }
 
 .player-iframe-container.inactive-player {
-  /* Keep visibility: visible and non-zero opacity behind the opaque #000 active-player
+  /* Keep visibility: visible and full opacity behind the opaque #000 active-player (z-index: 10)
      so Chromium never throttles background iframe decoding or rAF bezel fade-out timers */
-  opacity: 0.001;
+  opacity: 1;
   visibility: visible;
   z-index: 1;
   pointer-events: none;
